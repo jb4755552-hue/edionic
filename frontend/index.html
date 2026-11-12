@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Edionic — 9:16 AI Video Studio (edionic.com)</title>
+  <link rel="stylesheet" href="styles.css?v=5" />
+</head>
+<body class="mode-landing">
+
+  <!-- =========================================================================
+       VIEW 1: CLEAN LANDING PAGE + READY-MADE & CUSTOM STYLE CREATOR
+       (Visible First! Automatically hides when user picks or creates a style)
+       ========================================================================= -->
+  <div id="view-landing-hub" class="landing-hub-wrapper">
+
+    <!-- Clean Sticky Topbar for Landing & Style Hub -->
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-dot"></div>
+        <span class="brand-logo">Edi<span class="brand-LogoAccent">onic</span></span>
+        <span class="brand-badge">9:16 Vertical AI Studio</span>
+      </div>
+
+      <nav class="nav-sections" aria-label="Landing Navigation">
+        <a href="#sec-hero" class="nav-pill active">1. Home</a>
+        <a href="#sec-styles-hub" class="nav-pill">2. Pick or Create Style</a>
+        <button type="button" id="btn-nav-open-nle" class="nav-pill">3. Open NLE Timeline Studio →</button>
+      </nav>
+
+      <div class="header-actions">
+        <button type="button" class="theme-toggle-btn btn-theme-switch" title="Switch Dark / Light Theme">
+          <span class="theme-icon">☀️</span>
+          <span class="theme-label">Light Mode</span>
+        </button>
+      </div>
+    </header>
+
+    <main class="page-container">
+
+      <!-- HERO SECTION -->
+      <section id="sec-hero" class="section-block hero-section">
+        <div class="section-badge-row">
+          <span class="step-pill">WELCOME TO EDIONIC</span>
+          <span class="subtle-pill">Local-First · Whisper + FFmpeg 9:16 Engine</span>
+        </div>
+
+        <h1 class="hero-title">
+          Create Viral <span class="text-gradient">9:16 Vertical Videos</span> with AI Precision
+        </h1>
+
+        <p class="hero-subtitle">
+          Upload your raw clip, choose a ready-made 9:16 style template or build your own custom style below.
+          As soon as you pick a style, the full <strong>AI Agent + Multi-Track NLE Timeline</strong> opens automatically.
+        </p>
+
+        <div class="hero-cta-group">
+          <a href="#sec-styles-hub" class="btn btn-lg">
+            ✨ Choose or Create Your Style ↓
+          </a>
+          <button type="button" id="btn-hero-open-nle" class="btn btn-outline btn-lg">
+            🎬 Open NLE Timeline Directly →
+          </button>
+        </div>
+
+        <div class="hero-features-grid">
+          <div class="feature-card">
+            <div class="feature-num">STEP 01</div>
+            <h3>Import Media &amp; Prompt</h3>
+            <p>Drop your talking-head video clip and describe how you want your video edited in plain language.</p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-num">STEP 02</div>
+            <h3>Pick or Create a Style</h3>
+            <p>Select from 11 verified 9:16 visual templates (Tour, Strategist, Cozy, Vox-Style, Aura) or create your own custom style.</p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-num">STEP 03</div>
+            <h3>Full NLE Timeline + Agent</h3>
+            <p>Picking any style opens the clean 3-column Studio Workspace + Multi-Track Timeline (`V3`, `V2`, `V1`, `A1`, `CC`).</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- STYLE PICKER & CUSTOM TEMPLATE CREATOR SECTION -->
+      <section id="sec-styles-hub" class="section-block">
+        <div class="section-header-bar">
+          <div>
+            <span class="step-pill">STYLE &amp; TEMPLATE CREATOR</span>
+            <h2 class="section-heading">Import Media &amp; Select an Edit Style</h2>
+            <p class="section-desc">Upload your raw video, pick any 9:16 style card below (or save your own custom style) to open the AI Agent + Timeline Studio.</p>
+          </div>
+          <div class="header-right-actions">
+            <button type="button" id="btn-toggle-custom-creator" class="btn">
+              🎨 + Create Your Own Style
+            </button>
+          </div>
+        </div>
+
+        <!-- Upload + Prompt Composer Box -->
+        <div class="composer-box">
+          <label class="upload-dropzone" for="hub-file-upload">
+            <div class="upload-icon-circle">＋</div>
+            <div class="upload-title" id="hub-upload-status">Add Media (Click to Upload Video Clip)</div>
+            <div class="upload-subtitle">MP4, MOV, WebM — Binds directly to Track V1 &amp; A1 and runs live edits</div>
+            <input id="hub-file-upload" type="file" accept="video/*" style="display:none;" />
+          </label>
+
+          <div class="composer-prompt-bar">
+            <input
+              id="hub-prompt-input"
+              type="text"
+              class="input-box"
+              placeholder="How do you want to edit your video? (e.g., Is video ko pora edit karo, captions aur motion graphics add karo...)"
+            />
+            <div class="composer-buttons">
+              <button type="button" class="btn btn-outline" id="btn-hub-sample-clip">Use 5s Sample Clip</button>
+              <button type="button" class="btn" id="btn-hub-launch-editor">Create My Video &amp; Open Studio →</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Custom Style Creator Panel -->
+        <div id="custom-style-creator-drawer" class="custom-creator-panel" style="display:none;">
+          <div class="creator-panel-top">
+            <div>
+              <h3>Create Your Own Custom Style Template</h3>
+              <p>Design your own 9:16 style with custom typography preset and highlight color. Saving opens the Timeline Studio immediately.</p>
+            </div>
+            <button type="button" id="btn-close-custom-creator" class="btn btn-outline btn-sm">✕ Close</button>
+          </div>
+
+          <div class="creator-form-grid">
+            <div>
+              <label class="field-label" for="custom-style-name">Template Name</label>
+              <input id="custom-style-name" class="input-box" type="text" value="My Custom 9:16 Style" />
+            </div>
+            <div>
+              <label class="field-label" for="custom-style-caption">Caption Preset (11 Verified)</label>
+              <select id="custom-style-caption" class="input-box">
+                <option value="glow">glow (Default Luminous Halo)</option>
+                <option value="karaoke_pop">karaoke_pop (Popped Active Word)</option>
+                <option value="pill_highlight">pill_highlight (Pill Highlight Box)</option>
+                <option value="neon_serif">neon_serif (Neon Glow)</option>
+                <option value="extrude_3d">extrude_3d (3D Block Shadow)</option>
+                <option value="gradient_steps">gradient_steps (Color Steps)</option>
+                <option value="condensed">condensed (Bold Condensed)</option>
+                <option value="podcast_two_tier">podcast_two_tier (Two-Tier Layout)</option>
+                <option value="handwritten">handwritten (Script Italic)</option>
+                <option value="minimal_clean">minimal_clean (Minimal Lower-Third)</option>
+                <option value="light_sweep_title">light_sweep_title (Light Sweep Title Card)</option>
+              </select>
+            </div>
+            <div>
+              <label class="field-label" for="custom-style-color">Headline Highlight Color</label>
+              <div style="display:flex;gap:8px;align-items:center;">
+                <input id="custom-style-color" type="color" value="#3B63FF" class="color-picker-input" />
+                <input id="custom-style-tag" class="input-box" type="text" value="Custom · 30fps · 9:16" />
+              </div>
+            </div>
+            <div style="display:flex;align-items:flex-end;">
+              <button type="button" id="btn-save-custom-style" class="btn" style="width:100%;">
+                💾 Save Style &amp; Open Studio →
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Category Filter Tabs & Search -->
+        <div class="styles-filter-row">
+          <div class="chips-grid" id="style-category-filters">
+            <button type="button" class="chip style-cat-pill active" data-cat="all">All / Trending</button>
+            <button type="button" class="chip style-cat-pill" data-cat="new">New</button>
+            <button type="button" class="chip style-cat-pill" data-cat="bold">Bold</button>
+            <button type="button" class="chip style-cat-pill" data-cat="polished">Polished</button>
+            <button type="button" class="chip style-cat-pill" data-cat="minimal">Minimal</button>
+            <button type="button" class="chip style-cat-pill" data-cat="custom">My Custom Styles</button>
+          </div>
+          <input
+            id="style-search-input"
+            type="text"
+            class="input-box search-input-sm"
+            placeholder="Search styles (Tour, Strategist, Cozy, Vox-Style, Aura)..."
+          />
+        </div>
+
+        <!-- 9:16 Ready-Made Visual Style Cards Grid -->
+        <div id="visual-styles-grid" class="visual-styles-grid"></div>
+      </section>
+
+    </main>
+
+    <footer class="footer">
+      <div><strong>Edionic</strong> — Free, Local-First 9:16 AI Video Editor · <a href="https://edionic.com" target="_blank" rel="noopener">edionic.com</a></div>
+      <div>Support: <a href="mailto:infosupport@edionic.com">infosupport@edionic.com</a></div>
+    </footer>
+  </div>
+
+  <!-- =========================================================================
+       VIEW 2: CLEAN STUDIO WORKSPACE + MULTI-TRACK TIMELINE
+       (The earlier clean card layout the user liked! Opens when a style is picked)
+       ========================================================================= -->
+  <div id="view-nle-studio" style="display:none;">
+
+    <!-- Clean Sticky Studio Topbar -->
+    <header class="topbar">
+      <div class="brand">
+        <button type="button" id="btn-back-to-landing" class="btn btn-outline btn-sm">
+          ← Back to Styles &amp; Templates
+        </button>
+        <div class="brand-dot" style="margin-left:6px;"></div>
+        <span class="brand-logo">Edi<span class="brand-LogoAccent">onic</span></span>
+        <span id="active-style-pill" class="brand-badge">Active Style: Tour (glow)</span>
+      </div>
+
+      <nav class="nav-sections" aria-label="Studio Sections">
+        <a href="#sec-agent" class="nav-pill active">1. AI Agent</a>
+        <a href="#sec-preview" class="nav-pill">2. 9:16 Preview</a>
+        <a href="#sec-media-styles" class="nav-pill">3. Captions &amp; SFX</a>
+        <a href="#sec-timeline" class="nav-pill">4. Multi-Track Timeline</a>
+      </nav>
+
+      <div class="header-actions" style="display:flex;align-items:center;gap:10px;">
+        <span id="engine-badge" class="section-tag">FFmpeg OK · Whisper OK</span>
+        <button type="button" class="theme-toggle-btn btn-theme-switch" title="Switch Dark / Light Theme">
+          <span class="theme-icon">☀️</span>
+          <span class="theme-label">Light Mode</span>
+        </button>
+      </div>
+    </header>
+
+    <main class="page-container">
+
+      <!-- =====================================================================
+           CLEAN 3-COLUMN STUDIO WORKSPACE (1. AI Agent | 2. 9:16 Preview | 4. Tools)
+           ===================================================================== -->
+      <div id="sec-studio-workspace" class="section-block">
+        <div class="studio-three-col">
+
+          <!-- COLUMN 1: AI AGENT COMMAND BAR & CHAT -->
+          <section id="sec-agent" class="panel">
+            <div class="panel-header">
+              <h2 class="panel-title">1. AI Agent Command Bar</h2>
+              <span class="section-tag">AI Decides · FFmpeg Renders</span>
+            </div>
+
+            <!-- Conversational Chat Thread -->
+            <div id="agent-chat-thread" class="agent-chat-thread">
+              <div class="agent-msg agent-msg-bot">
+                <div class="agent-msg-sender">Edionic AI Agent</div>
+                <div class="agent-msg-bubble">
+                  Ready! Upload your clip and tell me what edit to apply (e.g., <em>"is video ko pora edit karo, captions aur motion graphics add karo"</em>). I will automatically update the timeline and render your 9:16 MP4!
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <label for="agent-cmd-input" class="field-label">Plain-Language Edit Command (Roman Urdu or English)</label>
+              <div style="display:flex;gap:6px;">
+                <input id="agent-cmd-input" class="input-box" type="text" placeholder="e.g., is video ko pora edit karo, captions bara karo..." />
+                <button id="btn-run-cmd" class="btn" type="button">Apply &amp; Edit</button>
+              </div>
+            </div>
+
+            <div>
+              <div class="field-label">One-Click Agent Actions</div>
+              <div class="chips-grid">
+                <button class="chip cmd-quick" data-cmd="Is video ko pora edit karo, captions add karo, silence cut karo aur render karo">✨ Auto Edit Full Video</button>
+                <button class="chip cmd-quick" data-cmd="Cut silences & apply glow captions and render">✂ Silence Cut + Glow</button>
+                <button class="chip cmd-quick" data-cmd="Switch caption preset to karaoke_pop and render">🎤 Karaoke Pop Captions</button>
+                <button class="chip cmd-quick" data-cmd="B-Roll add karo aur whoosh sfx lagao">🎞️ Add B-Roll + SFX</button>
+              </div>
+            </div>
+
+            <div class="divider-top">
+              <button id="btn-export-job-json" class="btn btn-outline" style="width:100%;" type="button">
+                ⬇ Export job JSON (editor-job.json)
+              </button>
+            </div>
+          </section>
+
+          <!-- COLUMN 2: 9:16 VERTICAL PREVIEW + TRANSCRIPT + LIVE RENDER PROGRESS -->
+          <section id="sec-preview" class="panel">
+            <div class="panel-header">
+              <h2 class="panel-title">2. 9:16 Vertical Preview (1080×1920)</h2>
+              <span id="source-timecode" class="section-tag">00:00:00:00</span>
+            </div>
+
+            <div class="preview-and-transcript">
+              <!-- 9:16 Phone Frame -->
+              <div class="preview-stage">
+                <div class="phone-frame">
+                  <video id="preview-video" controls playsinline></video>
+                </div>
+                <div class="timecode-readout">
+                  Timecode: <strong id="monitor-timecode">00:00:00:00</strong> · 30 FPS · 9:16
+                </div>
+              </div>
+
+              <!-- Word-Level Transcript Box -->
+              <div class="transcript-card">
+                <div class="transcript-header">
+                  <span>Synced Word Transcript (Click word to seek)</span>
+                  <span id="transcript-word-count" class="section-tag">13 words</span>
+                </div>
+                <div id="live-transcript-box" class="transcript-words-wrap"></div>
+              </div>
+            </div>
+
+            <div class="transport-bar">
+              <button id="btn-play-toggle" class="btn btn-outline" type="button">▶ Play / Pause</button>
+              <button id="btn-restart" class="btn btn-outline" type="button">⏮ 0.0s</button>
+              <label class="btn btn-outline" style="cursor:pointer;">
+                📤 Upload Raw Clip
+                <input id="file-upload-input" type="file" accept="video/*" style="display:none;" />
+              </label>
+              <button id="btn-hello-render" class="btn" type="button">⚡ Render 9:16 Video Now</button>
+              <a id="btn-download-render" class="btn btn-outline" href="#" download style="display:none;">⬇ Download MP4</a>
+            </div>
+
+            <!-- Live Render Progress Bar & Slop Gate QA Badges -->
+            <div class="job-progress-wrap">
+              <div style="display:flex;justify-content:space-between;font-size:12.5px;font-weight:700;">
+                <span id="job-status-text">Queue Idle — Ready for 9:16 Render</span>
+                <span id="job-pct-text">0%</span>
+              </div>
+              <div class="progress-track">
+                <div id="job-progress-fill" class="progress-fill"></div>
+              </div>
+              <div id="slop-gate-results" style="margin-top:8px;font-size:12px;display:flex;flex-wrap:wrap;gap:6px;"></div>
+            </div>
+          </section>
+
+          <!-- COLUMN 3: MEDIA, STYLES, CAPTIONS & SFX INSPECTOR -->
+          <section id="sec-media-styles" class="panel">
+            <div class="panel-header">
+              <h2 class="panel-title">3. Captions, Storyboard &amp; SFX</h2>
+              <span class="section-tag">11 Verified Presets</span>
+            </div>
+
+            <div class="chips-grid" role="tablist">
+              <button class="chip tool-tab active" data-tab="tab-captions" type="button">Captions (11 Presets)</button>
+              <button class="chip tool-tab" data-tab="tab-styles" type="button">Style + Storyboard</button>
+              <button class="chip tool-tab" data-tab="tab-sfx" type="button">SFX + Loudness</button>
+            </div>
+
+            <!-- TAB 1: Caption Presets -->
+            <div id="tab-captions" class="tool-pane">
+              <div class="field-label">Select Caption / Title Preset (Click to apply)</div>
+              <div id="caption-presets-grid" class="chips-grid">
+                <button class="chip cap-chip active" data-preset="glow">glow (default)</button>
+                <button class="chip cap-chip" data-preset="gradient_steps">gradient_steps</button>
+                <button class="chip cap-chip" data-preset="extrude_3d">extrude_3d</button>
+                <button class="chip cap-chip" data-preset="handwritten">handwritten</button>
+                <button class="chip cap-chip" data-preset="neon_serif">neon_serif</button>
+                <button class="chip cap-chip" data-preset="condensed">condensed</button>
+                <button class="chip cap-chip" data-preset="pill_highlight">pill_highlight</button>
+                <button class="chip cap-chip" data-preset="karaoke_pop">karaoke_pop</button>
+                <button class="chip cap-chip" data-preset="podcast_two_tier">podcast_two_tier</button>
+                <button class="chip cap-chip" data-preset="minimal_clean">minimal_clean</button>
+                <button class="chip cap-chip" data-preset="light_sweep_title">light_sweep_title</button>
+              </div>
+
+              <div id="light-sweep-title-wrap" style="margin-top:10px;display:none;">
+                <label for="title-text-input" class="field-label">Title Text (for light_sweep_title card)</label>
+                <input id="title-text-input" class="input-box" type="text" value="Edionic 9:16 Hook Title" />
+              </div>
+
+              <div class="honest-limits-box">
+                <strong>Tip:</strong> Selecting a preset updates Track <code>CC</code>. Click <strong>⚡ Render 9:16 Video Now</strong> (or ask the AI Agent) to burn the captions &amp; cuts into your video!
+              </div>
+            </div>
+
+            <!-- TAB 2: Style Preset + Storyboard -->
+            <div id="tab-styles" class="tool-pane" style="display:none;">
+              <div class="sub-card">
+                <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
+                  <strong>Preset: <code id="inspector-style-code">smoke2_style</code></strong>
+                  <span class="qa-badge qa-pass">1080×1920 · 30 fps</span>
+                </div>
+                <div class="swatch-row">
+                  <div class="swatch" style="background:#864027;" title="#864027">#864027</div>
+                  <div class="swatch" style="background:#8C5B36;" title="#8C5B36">#8C5B36</div>
+                  <div class="swatch" style="background:#884126;" title="#884126">#884126</div>
+                  <div class="swatch" style="background:#864026;" title="#864026">#864026</div>
+                  <div class="swatch" style="background:#8E6039;" title="#8E6039">#8E6039</div>
+                </div>
+              </div>
+
+              <div style="margin-top:12px;">
+                <div class="field-label">Storyboard Blocks (Editable · Round-Trips to Plan)</div>
+                <div id="storyboard-blocks-container" style="display:flex;flex-direction:column;gap:8px;"></div>
+              </div>
+            </div>
+
+            <!-- TAB 3: SFX Picker + QA Badge -->
+            <div id="tab-sfx" class="tool-pane" style="display:none;">
+              <div class="field-label">Starter Kit (10 Synthesized Royalty-Free Sounds)</div>
+              <div id="sfx-placements-list" style="display:flex;flex-direction:column;gap:6px;font-size:12px;"></div>
+              <div class="sub-card" style="margin-top:10px;font-size:12px;">
+                <div style="font-weight:700;color:var(--accent);">Loudness Normalization Target: −14 LUFS ±1.0</div>
+                <div style="margin-top:6px;"><span class="qa-badge qa-pass">Mix Pass: YES</span> <span class="qa-badge qa-pass">Effects Gain: −12.0 dB</span></div>
+              </div>
+            </div>
+          </section>
+
+        </div>
+      </div>
+
+      <!-- =====================================================================
+           CLEAN FULL-WIDTH MULTI-TRACK TIMELINE (Section 3)
+           ===================================================================== -->
+      <section id="sec-timeline" class="section-block panel">
+        <div class="panel-header">
+          <div>
+            <span class="step-pill">MULTI-TRACK TIMELINE</span>
+            <h2 class="panel-title" style="margin-top:4px;">4. Premiere-Style Multi-Track Timeline (<code>.edl.json</code> Single Source of Truth)</h2>
+          </div>
+          <span class="section-tag">Trim by in/out · Never Re-Encode to Trim</span>
+        </div>
+
+        <div class="nle-timeline-layout">
+          <!-- Left Tool Strip -->
+          <div class="nle-tool-strip" aria-label="Timeline Tools">
+            <button type="button" class="nle-tool-btn active" title="Select Tool">↖</button>
+            <button type="button" class="nle-tool-btn" title="Razor / Split Tool">✂</button>
+            <button type="button" class="nle-tool-btn" title="Slip / Trim Tool">⇔</button>
+            <button type="button" class="nle-tool-btn" title="Caption Tool">T</button>
+            <button type="button" class="nle-tool-btn" title="SFX Marker">♪</button>
+          </div>
+
+          <!-- Center Ruler + 5 Tracks -->
+          <div class="timeline-tracks-wrap">
+            <div class="time-ruler">
+              <span>00:00.0</span>
+              <span>00:01.0 (SFX: whoosh)</span>
+              <span>00:02.5 (SFX: pop)</span>
+              <span>00:04.0 (SFX: ding)</span>
+              <span>00:05.5 (SFX: thump)</span>
+              <span>00:07.0 (SFX: snap)</span>
+            </div>
+
+            <div class="timeline-tracks">
+              <div class="track-row">
+                <div class="track-label"><span class="trk-badge trk-v3">V3</span> Adjustment</div>
+                <div class="track-lane"><span class="track-clip">Grade &amp; 9:16 Safe Guides · smoke2_style</span></div>
+                <div class="track-meta">Unlocked</div>
+              </div>
+              <div class="track-row">
+                <div class="track-label"><span class="trk-badge trk-v2">V2</span> Overlay / B-Roll</div>
+                <div class="track-lane" id="timeline-v2-lane"><span class="track-clip">Hook Title Card (0.0s – 1.5s)</span></div>
+                <div class="track-meta">Unlocked</div>
+              </div>
+              <div class="track-row">
+                <div class="track-label"><span class="trk-badge trk-v1">V1</span> Primary Video</div>
+                <div class="track-lane" id="timeline-v1-lane"><span class="track-clip">9:16 Talking-Head Source (in: 0.0s, out: 5.0s, speed: 1.0x)</span></div>
+                <div class="track-meta">1080×1920</div>
+              </div>
+              <div class="track-row">
+                <div class="track-label"><span class="trk-badge trk-a1">A1</span> Voice + Waveform</div>
+                <div class="track-lane"><span class="track-clip">▄▆▃█▅▂▇▄▆▃ Voice Track (−14 LUFS target) + SFX Mix (whoosh@1.0s, pop@2.5s, ding@4.0s, thump@5.5s, snap@7.0s)</span></div>
+                <div class="track-meta" style="color:var(--accent);font-weight:600;">+ SFX Near Audio</div>
+              </div>
+              <div class="track-row">
+                <div class="track-label"><span class="trk-badge trk-cc">CC</span> Captions (ASS)</div>
+                <div class="track-lane"><span id="timeline-cc-clip" class="track-clip">Preset: glow (Word-Level Timestamps · ≥54px)</span></div>
+                <div class="track-meta">≥ 54 px QA</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right Master Audio Meter -->
+          <div class="audio-meter-box" title="Master Loudness Meter (-14 LUFS)">
+            <div class="meter-labels">
+              <span>0</span>
+              <span>-6</span>
+              <span>-14</span>
+              <span>-24</span>
+              <span>-48</span>
+            </div>
+            <div class="meter-bars">
+              <div class="meter-col"><div class="meter-level" style="height:76%;"></div></div>
+              <div class="meter-col"><div class="meter-level" style="height:72%;"></div></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- =========================================================================
+       BACKEND-ONLY STATE CONTAINERS (Sections 5, 6, 7 — Hidden on Front UI)
+       ========================================================================= -->
+  <div id="backend-only-telemetry" style="display:none;" aria-hidden="true">
+    <section id="sec-properties"><textarea id="edl-inspector" readonly></textarea></section>
+    <section id="sec-brain"><span id="brain-route-badge">Local-First</span></section>
+    <section id="sec-crew"></section>
+    <div id="agent-log-box"></div>
+    <span id="mediabin-status-text"></span>
+  </div>
+
+  <script src="app.js?v=5"></script>
+</body>
+</html>

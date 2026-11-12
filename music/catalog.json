@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "library_type": "royalty_free_music_beds",
+  "beds": [
+    {
+      "id": "upbeat_pulse",
+      "name": "Upbeat Creator Pulse (120 BPM)",
+      "file": "upbeat_pulse.wav",
+      "duration": 10.0,
+      "bpm": 120,
+      "mood": "energetic",
+      "default_duck_db": -22.0,
+      "license": "synthesized in-house, 100% royalty-free",
+      "path": "C:\\ai editing\\music\\upbeat_pulse.wav"
+    },
+    {
+      "id": "lo_fi_warmth",
+      "name": "Lo-Fi Studio Warmth (90 BPM)",
+      "file": "lo_fi_warmth.wav",
+      "duration": 10.0,
+      "bpm": 90,
+      "mood": "warm",
+      "default_duck_db": -22.0,
+      "license": "synthesized in-house, 100% royalty-free",
+      "path": "C:\\ai editing\\music\\lo_fi_warmth.wav"
+    },
+    {
+      "id": "cinematic_drone",
+      "name": "Cinematic Hook Pad (Ambient)",
+      "file": "cinematic_drone.wav",
+      "duration": 10.0,
+      "bpm": 80,
+      "mood": "cinematic",
+      "default_duck_db": -24.0,
+      "license": "synthesized in-house, 100% royalty-free",
+      "path": "C:\\ai editing\\music\\cinematic_drone.wav"
+    }
+  ]
+}

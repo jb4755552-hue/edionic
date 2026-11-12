@@ -1,0 +1,37 @@
+# Local tools & large binaries (700MB+)
+tools/
+
+# Project uploads, exports, and renders
+projects/default/uploads/
+projects/default/exports/
+*.mp4
+*.mov
+*.webm
+*.mkv
+
+# Environment & credentials
+.env
+*.local
+
+# Python caches
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+
+# IDE & Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Agent skills cache
+.agent/
+.agents/
+
+# Logs
+*.log

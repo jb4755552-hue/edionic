@@ -1,0 +1,77 @@
+{
+  "version": 1,
+  "library_type": "starter_kit_royalty_free",
+  "honest_limits": "10-sound synthesized starter kit; 'on beat' means placed at exact cut frame (ms precision), not music-beat detection.",
+  "sounds": [
+    {
+      "name": "whoosh",
+      "file": "whoosh.wav",
+      "duration": 0.38,
+      "category": "transitions",
+      "note": "synthesized in-house, royalty-free"
+    },
+    {
+      "name": "swoosh",
+      "file": "swoosh.wav",
+      "duration": 0.32,
+      "category": "transitions",
+      "note": "synthesized in-house, royalty-free"
+    },
+    {
+      "name": "swish",
+      "file": "swish.wav",
+      "duration": 0.24,
+      "category": "transitions",
+      "note": "synthesized in-house, royalty-free"
+    },
+    {
+      "name": "pop",
+      "file": "pop.wav",
+      "duration": 0.14,
+      "category": "impacts",
+      "note": "synthesized in-house, royalty-free"
+    },
+    {
+      "name": "snap",
+      "file": "snap.wav",
+      "duration": 0.12,
+      "category": "impacts",
+      "note": "synthesized in-house, royalty-free"
+    },
+    {
+      "name": "thump",
+      "file": "thump.wav",
+      "duration": 0.28,
+      "category": "impacts",
+      "note": "synthesized in-house, royalty-free"
+    },
+    {
+      "name": "click",
+      "file": "click.wav",
+      "duration": 0.08,
+      "category": "UI",
+      "note": "synthesized in-house, royalty-free"
+    },
+    {
+      "name": "ding",
+      "file": "ding.wav",
+      "duration": 0.65,
+      "category": "musical",
+      "note": "synthesized in-house, royalty-free"
+    },
+    {
+      "name": "chime",
+      "file": "chime.wav",
+      "duration": 0.75,
+      "category": "musical",
+      "note": "synthesized in-house, royalty-free"
+    },
+    {
+      "name": "riser",
+      "file": "riser.wav",
+      "duration": 1.1,
+      "category": "rise",
+      "note": "synthesized in-house, royalty-free"
+    }
+  ]
+}

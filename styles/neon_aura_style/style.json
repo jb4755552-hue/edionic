@@ -1,0 +1,25 @@
+{
+  "style_id": "neon_aura_style",
+  "name": "Neon Aura Studio",
+  "reference_video_count": 1,
+  "reference_videos": [
+    "neon_ref.mp4"
+  ],
+  "resolution": "1080x1920",
+  "fps": 30.0,
+  "duration": 12.0,
+  "scene_count": 3,
+  "avg_shot_length": 4.0,
+  "palette": [
+    "#18181B",
+    "#27272A",
+    "#FF00FF",
+    "#00FFFF",
+    "#EF4444"
+  ],
+  "caption_style": "unverified",
+  "hook_style": "unverified",
+  "pacing": "unverified",
+  "recommended_caption_preset": "neon_serif",
+  "ffmpeg_grade_filter": "eq=contrast=1.08:saturation=1.14"
+}

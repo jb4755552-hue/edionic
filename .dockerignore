@@ -1,0 +1,6 @@
+tools/
+__pycache__/
+*.pyc
+.git/
+projects/default/exports/*.mp4
+projects/default/uploads/*.mp4
