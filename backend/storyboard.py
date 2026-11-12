@@ -264,10 +264,13 @@ def roundtrip_storyboard_edits_to_edl(
         if t.get("locked"):
             locked_tracks.add(t.get("id"))
 
-    # 1. Sync first block title/text to title_text if light_sweep_title or hook banner is used
+    # 1. Sync first block title/text to title_text if light_sweep_title or hook banner is used.
+    # Placeholder titles ("b0", "Beat 1", "hook") must NOT overwrite a real
+    # title_text: template hook blocks carry title "hook" while the template
+    # already set a meaningful title_text (Batch 3 graphics read it).
     if norm_sb["blocks"]:
         first_blk = norm_sb["blocks"][0]
-        if first_blk.get("title") and first_blk["title"] not in ("b0", "Beat 1"):
+        if first_blk.get("title") and first_blk["title"] not in ("b0", "Beat 1", "hook"):
             edl_data["title_text"] = first_blk["title"]
 
     # 2. Rebuild V2 Overlay clips & CC Caption words from storyboard blocks (if not locked)

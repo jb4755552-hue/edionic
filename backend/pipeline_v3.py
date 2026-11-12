@@ -45,6 +45,7 @@ from sfx_system import (
 )
 from learn_style import ensure_default_style_library, list_style_library
 from storyboard import normalize_storyboard, roundtrip_storyboard_edits_to_edl
+from graphics import build_render_graphics, merge_graphics_into_ass
 from contact_sheet_qa import run_contact_sheet_qa
 from openfilm import (
     apply_overrides_and_locks,
@@ -56,18 +57,24 @@ from broll_hunter import ensure_broll_pool, hunt_broll_for_edl
 from music_library import ensure_music_library
 from publishing_kit import generate_publishing_kit
 
+# Whisper model: multilingual "tiny" (same ~39M size class as "tiny.en", still
+# int8 on CPU for 8 GB RAM). "tiny.en" is English-only and mis-transcribes
+# Roman Urdu / Hinglish speech; the multilingual model handles both. Override
+# with EDIONIC_WHISPER_MODEL (e.g. "base") on stronger machines.
+WHISPER_MODEL = os.environ.get("EDIONIC_WHISPER_MODEL", "tiny")
+
 _WHISPER_MODEL_CACHE = None
 
 
 def get_whisper_model():
-    """Lazy-load faster-whisper tiny.en int8 model (fast & lightweight on 8 GB RAM CPU)."""
+    """Lazy-load faster-whisper multilingual tiny int8 model (fast & lightweight on 8 GB RAM CPU)."""
     global _WHISPER_MODEL_CACHE
     if _WHISPER_MODEL_CACHE is None:
         from faster_whisper import WhisperModel  # type: ignore
         model_dir = os.path.join(r"C:\ai editing\tools", "whisper_models")
         os.makedirs(model_dir, exist_ok=True)
         _WHISPER_MODEL_CACHE = WhisperModel(
-            "tiny.en",
+            WHISPER_MODEL,
             device="cpu",
             compute_type="int8",
             download_root=model_dir
@@ -327,6 +334,44 @@ def detect_and_cut_silences(
     }
 
 
+def build_no_cut_plan(
+    words: List[Dict[str, Any]],
+    total_duration: float
+) -> Dict[str, Any]:
+    """
+    Cut-plan for templates with silence_cuts=False (e.g. Trust Talking Head —
+    Slow Single Take, template 4): keep the whole take as one segment, do not
+    run silencedetect, and leave word timestamps un-remapped. Same dict shape
+    as detect_and_cut_silences() so the rest of the render is unchanged.
+    """
+    total_duration = round(max(0.0, float(total_duration)), 3)
+    kept_segments = [{
+        "id": "clip_v1_0",
+        "in": 0.0,
+        "out": total_duration,
+        "at": 0.0,
+        "duration": total_duration,
+        "speed": 1.0,
+    }]
+    remapped_words = [{
+        "word": w["word"],
+        "start": round(float(w["start"]), 3),
+        "end": round(float(w["end"]), 3),
+        "orig_start": round(float(w["start"]), 3),
+        "orig_end": round(float(w["end"]), 3),
+        "prob": w.get("prob", 1.0),
+    } for w in words]
+    return {
+        "kept_segments": kept_segments,
+        "cut_points_s": [],
+        "remapped_words": remapped_words,
+        "original_duration_s": round(total_duration, 2),
+        "edited_duration_s": round(total_duration, 2),
+        "silence_removed_s": 0.0,
+        "silence_spans_detected": 0,
+    }
+
+
 def compute_face_anchored_crop(
     video_path: str,
     target_w: int = 1080,
@@ -454,7 +499,15 @@ def render_edl_to_video(
     if progress_cb:
         progress_cb(30, f"Step 2/5: Cutting silences & remapping {len(words)} words...")
 
-    cut_plan = detect_and_cut_silences(source_video, words, total_dur)
+    # Template silence rule (follow-up batch): a template may set
+    # silence_cuts=False (Trust Talking Head, slow single take). The flag
+    # arrives as template_silence_cuts via apply_template_to_job(), or as a
+    # plain top-level silence_cuts on the job. Default True = old behaviour.
+    silence_cuts = edl_data.get("template_silence_cuts", edl_data.get("silence_cuts", True))
+    if silence_cuts is False:
+        cut_plan = build_no_cut_plan(words, total_dur)
+    else:
+        cut_plan = detect_and_cut_silences(source_video, words, total_dur)
     kept_segments = cut_plan["kept_segments"]
     remapped_words = cut_plan["remapped_words"]
     edited_dur = cut_plan["edited_duration_s"]
@@ -545,6 +598,22 @@ def render_edl_to_video(
         play_res_y=1920
     )
 
+    # Batch 3: motion graphics layer — V2 overlay clips (storyboard graphics)
+    # + template graphics (watermark). ASS events merge into the same .ass
+    # file (libass scales them to 4K like captions); drawbox fragments go
+    # into the filter chain before subtitles. No graphics => no change.
+    graphics = build_render_graphics(
+        edl_data=edl_data,
+        edited_duration=edited_dur,
+        preset_name=preset_name,
+        scale=2 if is_4k else 1,
+    )
+    graphics_vf = ""
+    if graphics["has_graphics"]:
+        merge_graphics_into_ass(ass_inspect_path, graphics["ass_styles"], graphics["ass_events"])
+        if graphics["vf_fragments"]:
+            graphics_vf = "," + ",".join(graphics["vf_fragments"])
+
     t0 = time.time()
     with tempfile.TemporaryDirectory() as workdir:
         local_ass = os.path.join(workdir, "captions.ass")
@@ -625,7 +694,7 @@ def render_edl_to_video(
             + ";"
             + "".join(v_inputs)
             + f"concat=n={len(kept_segments)}:v=1:a=0[vcat];"
-            + f"[vcat]{framing['filter']},fps=30{extra_title_vf},subtitles=captions.ass,format=yuv420p[vout]"
+            + f"[vcat]{framing['filter']},fps=30{graphics_vf}{extra_title_vf},subtitles=captions.ass,format=yuv420p[vout]"
         )
 
         cmd = [
@@ -664,8 +733,10 @@ def render_edl_to_video(
         "title_text": title_text,
         "transcription_words": remapped_words,
         "cut_plan": cut_plan,
+        "silence_cuts_applied": bool(silence_cuts),
         "framing": framing,
         "caption_info": caption_info,
+        "graphics": graphics["summary"],
         "sfx_loudness_qa": loudness_qa,
         "look_double_draw": look_double_draw
     }

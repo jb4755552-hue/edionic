@@ -9,7 +9,7 @@
 Always prepend these to `PATH` when running commands:
 - **Python 3.11.9 (with `faster-whisper 1.2.1` installed):** `C:\ai editing\tools\python\python.exe`
 - **FFmpeg & FFprobe 9.0.2:** `C:\ai editing\tools\ffmpeg\bin\ffmpeg.exe` and `ffprobe.exe`
-- **Whisper Model Cache (`tiny.en` int8):** `C:\ai editing\tools\whisper_models`
+- **Whisper Model Cache (`tiny` multilingual int8; override via `EDIONIC_WHISPER_MODEL`):** `C:\ai editing\tools\whisper_models`
 - **Launcher Script:** `C:\ai editing\start_edionic.bat` (starts backend + UI on `http://127.0.0.1:8080`)
 
 ---
