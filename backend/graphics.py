@@ -229,6 +229,101 @@ def _wrap_two_lines(text: str, max_chars: int = 22) -> str:
     return " ".join(words[:mid]) + "\\N" + " ".join(words[mid:])
 
 
+_ARIAL_W = {
+    " ": 0.278, "!": 0.333, '"': 0.365, "#": 0.556, "$": 0.556, "%": 0.889,
+    "&": 0.667, "'": 0.191, "(": 0.333, ")": 0.333, "*": 0.389, "+": 0.584,
+    ",": 0.278, "-": 0.333, ".": 0.278, "/": 0.278,
+    "0": 0.556, "1": 0.556, "2": 0.556, "3": 0.556, "4": 0.556, "5": 0.556,
+    "6": 0.556, "7": 0.556, "8": 0.556, "9": 0.556,
+    ":": 0.278, ";": 0.278, "<": 0.584, "=": 0.584, ">": 0.584, "?": 0.556,
+    "@": 0.968,
+    "A": 0.667, "B": 0.667, "C": 0.722, "D": 0.722, "E": 0.667, "F": 0.611,
+    "G": 0.778, "H": 0.722, "I": 0.278, "J": 0.500, "K": 0.667, "L": 0.556,
+    "M": 0.833, "N": 0.722, "O": 0.778, "P": 0.667, "Q": 0.778, "R": 0.722,
+    "S": 0.667, "T": 0.611, "U": 0.722, "V": 0.667, "W": 0.944, "X": 0.667,
+    "Y": 0.667, "Z": 0.611, "[": 0.333, "\\": 0.278, "]": 0.333, "^": 0.469,
+    "_": 0.556, "`": 0.333,
+    "a": 0.556, "b": 0.556, "c": 0.500, "d": 0.556, "e": 0.556, "f": 0.278,
+    "g": 0.556, "h": 0.556, "i": 0.222, "j": 0.222, "k": 0.500, "l": 0.222,
+    "m": 0.833, "n": 0.556, "o": 0.556, "p": 0.556, "q": 0.556, "r": 0.333,
+    "s": 0.500, "t": 0.278, "u": 0.556, "v": 0.500, "w": 0.722, "x": 0.500,
+    "y": 0.500, "z": 0.500, "{": 0.334, "|": 0.260, "}": 0.334, "~": 0.584,
+    "…": 1.000,
+}
+
+
+def _est_text_w(text: str, fontsize: int) -> float:
+    """Rough rendered width (px, 1080 grid) of one line at `fontsize`.
+
+    Per-character Arial advances (em units) with a 1.06 margin — a flat
+    per-char average was too crude: it truncated "full-time" to
+    "full-t…" even though the word fits its card. This is the fix for
+    the drive-run defects: _wrap_two_lines split by word COUNT, so a
+    22-char line at 80px still wrapped in ASS into a third line that
+    spilled the proof card and collided with the captions.
+    """
+    if not text:
+        return 0.0
+    em = sum(_ARIAL_W.get(c, 0.556) for c in text)
+    return em * fontsize * 1.06
+
+
+def _fit_text(text: str, fontsize: int, max_w: float, max_lines: int = 2,
+              min_fs: int = 26) -> Tuple[List[str], int]:
+    """Greedy word-wrap `text` to lines no wider than max_w, shrinking
+    the font (down to min_fs) and truncating with an ellipsis as a last
+    resort. Returns (lines, fontsize_used). Never returns more than
+    max_lines lines, and no returned line exceeds max_w at the used size
+    (by the _est_text_w estimate) — so ASS never auto-wraps a fitted
+    line into an extra line that spills the box or hits the captions.
+    """
+    words = str(text or "").split()
+    if not words:
+        return [], fontsize
+    fs = fontsize
+    while True:
+        lines: List[str] = []
+        cur = ""
+        for w in words:
+            cand = f"{cur} {w}".strip()
+            if _est_text_w(cand, fs) <= max_w or not cur:
+                cur = cand
+            else:
+                lines.append(cur)
+                cur = w
+        if cur:
+            lines.append(cur)
+        if len(lines) <= max_lines:
+            # A single over-wide word can still exceed max_w: hard-truncate it.
+            fixed = []
+            for ln in lines:
+                while len(ln) > 1 and _est_text_w(ln, fs) > max_w:
+                    ln = ln[:-2] + "…"
+                fixed.append(ln)
+            return fixed, fs
+        if fs - 6 >= min_fs:
+            fs -= 6
+            continue
+        # Min size reached and still too many lines: keep the first
+        # max_lines-1, pack what fits of the rest into the last line.
+        head = lines[: max_lines - 1]
+        tail_words = " ".join(lines[max_lines - 1:]).split()
+        tail = ""
+        for w in tail_words:
+            cand = f"{tail} {w}".strip()
+            if _est_text_w(cand + " …", fs) <= max_w:
+                tail = cand
+            else:
+                break
+        head.append((tail + " …").strip() if tail else "…")
+        return head, fs
+
+
+def _fs_override(base_fs: int, used_fs: int) -> str:
+    """ASS font-size override, empty when the base size already fits."""
+    return f"\\fs{used_fs}" if used_fs != base_fs else ""
+
+
 def _rounded_rect_path(x0: int, y0: int, x1: int, y1: int, r: int) -> str:
     """ASS drawing commands for a rounded rectangle (absolute coordinates)."""
     r = max(1, min(r, (x1 - x0) // 2, (y1 - y0) // 2))
@@ -322,16 +417,22 @@ def _title_card(start: float, end: float, text: str, accent: str, scale: int):
                  start, end),
     ]
     shown = _clean_ass_text(text).upper()
+    lines, used_fs = _fit_text(shown, 84, TITLE_BAND["w"] - 60, 2, min_fs=48)
     events = [_dialogue(
         start, end, "GfxTitle",
-        "{\\move(140,330,540,330,0,250)\\fad(150,150)}" + _wrap_two_lines(shown),
+        "{\\move(140,330,540,330,0,250)\\fad(150,150)%s}" % _fs_override(84, used_fs)
+        + "\\N".join(lines),
     )]
     return events, vf
 
 
 def _pill(start: float, end: float, text: str, accent: str, scale: int):
     shown = _clean_ass_text(text).upper()
-    est_w = min(920, max(220, int(len(shown) * 38) + 120))
+    # One line only, fitted to the pill: the old len*38 width estimate
+    # let a 7-word pill wrap to a 2nd line that spilled below the shape.
+    lines, used_fs = _fit_text(shown, 58, 860, 1, min_fs=36)
+    shown = lines[0] if lines else ""
+    est_w = min(920, max(220, int(_est_text_w(shown, used_fs)) + 120))
     x0 = (CANVAS_W - est_w) // 2
     x1 = x0 + est_w
     y0, y1 = PILL_Y, PILL_Y + PILL_H
@@ -342,7 +443,7 @@ def _pill(start: float, end: float, text: str, accent: str, scale: int):
         _dialogue(start, end, "GfxShape",
                   "{\\an7\\pos(0,0)\\p1\\1c" + fill + "\\fad(120,120)}" + path + "{\\p0}"),
         _dialogue(start, end, "GfxPill",
-                  "{\\pos(540,%d)\\fad(120,120)\\1c%s}" % (y0 + 14, pill_text_color) + shown),
+                  "{\\pos(540,%d)\\fad(120,120)%s\\1c%s}" % (y0 + 14, _fs_override(58, used_fs), pill_text_color) + shown),
     ]
     return events, []
 
@@ -355,15 +456,20 @@ def _proof_card(start: float, end: float, claim: str, label: str, accent: str, s
                  start, end, thickness=str(6 * scale)),
     ]
     claim_y = PROOF_CARD["y"] + 24
-    wrapped_claim = _wrap_two_lines(_clean_ass_text(claim).upper())
+    # Fit the claim inside the card (880w, 80px side padding): the old
+    # word-count split made a 22-char line at 80px that ASS wrapped into
+    # a 3rd line, spilling the box and colliding with the keyword caption.
+    lines, used_fs = _fit_text(_clean_ass_text(claim).upper(), 80,
+                               PROOF_CARD["w"] - 80, 2, min_fs=44)
+    wrapped_claim = "\\N".join(lines)
     events = [_dialogue(
         start, end, "GfxProof",
-        "{\\pos(540,%d)\\fscx90\\fscy90\\t(0,180,\\fscx100\\fscy100)\\fad(150,150)}" % claim_y
+        "{\\pos(540,%d)%s\\fscx90\\fscy90\\t(0,180,\\fscx100\\fscy100)\\fad(150,150)}" % (claim_y, _fs_override(80, used_fs))
         + wrapped_claim,
     )]
     # The label only fits when the claim stays on one line; a two-line
     # claim would grow down into the label slot.
-    if label and "\\N" not in wrapped_claim:
+    if label and len(lines) <= 1:
         events.append(_dialogue(
             start, end, "GfxProofLabel",
             "{\\pos(540,%d)\\fad(150,150)}" % (PROOF_CARD["y"] + 178) + _clean_ass_text(label),
@@ -379,8 +485,12 @@ def _lower_third(start: float, end: float, name: str, role: str, accent: str, sc
                  start, end),
         _drawbox(band["x"], band["y"], 12 * scale, band["h"], accent, start, end),
     ]
-    line = "{\\move(-300,%d,100,%d,0,300)\\fad(150,150)}" % (
-        LOWER_BAND["y"] + 25, LOWER_BAND["y"] + 25) + _clean_ass_text(name)
+    name_lines, name_fs = _fit_text(_clean_ass_text(name), 70,
+                                    LOWER_BAND["w"] - 60, 1, min_fs=40)
+    name_shown = name_lines[0] if name_lines else ""
+    line = "{\\move(-300,%d,100,%d,0,300)\\fad(150,150)%s}" % (
+        LOWER_BAND["y"] + 25, LOWER_BAND["y"] + 25,
+        _fs_override(70, name_fs)) + name_shown
     if role:
         line += "\\N{\\fs44\\1c&HD8DEE9&}" + _clean_ass_text(role)
     events = [_dialogue(start, end, "GfxLower", line)]
@@ -467,10 +577,13 @@ def _card_sequence(start: float, end: float, cards: List[Dict[str, Any]], accent
         ))
         label = _clean_ass_text(card.get("label", ""))
         if label:
+            # Fit to the card's inner width: at 5 cards a card is 176px
+            # wide, so a 12-char "line" still overflowed the card edge.
+            label_lines, label_fs = _fit_text(label, 36, cw_u - 24, 2, min_fs=26)
             events.append(_dialogue(
                 start, end, "GfxCardLabel",
-                "{\\pos(%d,%d)\\fad(120,120)}" % (cx_u, CARDS_ROW["y"] + 140)
-                + _wrap_two_lines(label, 12),
+                "{\\pos(%d,%d)\\fad(120,120)%s}" % (cx_u, CARDS_ROW["y"] + 140, _fs_override(36, label_fs))
+                + "\\N".join(label_lines),
             ))
     return events, vf
 
