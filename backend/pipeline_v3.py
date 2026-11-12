@@ -46,6 +46,12 @@ from sfx_system import (
 from learn_style import ensure_default_style_library, list_style_library
 from storyboard import normalize_storyboard, roundtrip_storyboard_edits_to_edl
 from graphics import build_render_graphics, merge_graphics_into_ass
+from motion_planner import (
+    plan_motion_graphics,
+    inject_plan_into_edl,
+    job_has_manual_graphics,
+    hook_card_present,
+)
 from contact_sheet_qa import run_contact_sheet_qa
 from openfilm import (
     apply_overrides_and_locks,
@@ -586,6 +592,27 @@ def render_edl_to_video(
         elif tid == "CC":
             track["clips"] = remapped_words
 
+    # Batch 3 extension: motion design plan. When the job carries no manual
+    # storyboard/template graphics (a lone auto hook title card does not
+    # count), plan graphics from the transcript — timed card sequences,
+    # emphasis cards/pills, hook title, zooms — and inject them as V2 clips
+    # so the graphics layer below renders them. A locked V2 track means
+    # the user owns overlays: never auto-plan into it. The plan is returned
+    # in the render info (motion_plan) so it stays visible.
+    motion_plan: Dict[str, Any] = {"planned": False, "reason": "manual graphics present"}
+    if "V2" in locked_tracks:
+        motion_plan = {"planned": False, "reason": "V2 track locked"}
+    elif not job_has_manual_graphics(edl_data):
+        plan = plan_motion_graphics(
+            remapped_words,
+            edited_dur,
+            title_text=title_text,
+            hook_card_present_flag=hook_card_present(edl_data),
+        )
+        if plan["clips"]:
+            inject_plan_into_edl(edl_data, plan)
+        motion_plan = {"planned": True, "segments": plan["segments"], "source": "transcript rules"}
+
     # Always generate ASS captions on the 1080x1920 coordinate grid; FFmpeg's libass automatically
     # scales PlayResX:1080 / PlayResY:1920 proportionally onto 2160x3840 4K frames!
     ass_inspect_path = os.path.splitext(output_video)[0] + ".ass"
@@ -609,10 +636,16 @@ def render_edl_to_video(
         scale=2 if is_4k else 1,
     )
     graphics_vf = ""
+    zoom_vf = ""
     if graphics["has_graphics"]:
-        merge_graphics_into_ass(ass_inspect_path, graphics["ass_styles"], graphics["ass_events"])
+        if graphics["ass_events"]:
+            merge_graphics_into_ass(ass_inspect_path, graphics["ass_styles"], graphics["ass_events"])
         if graphics["vf_fragments"]:
             graphics_vf = "," + ",".join(graphics["vf_fragments"])
+        if graphics["zoom_fragments"]:
+            # Zoom runs before the drawbox backgrounds: graphics stay fixed
+            # while the video punches in underneath them.
+            zoom_vf = "," + ",".join(graphics["zoom_fragments"])
 
     t0 = time.time()
     with tempfile.TemporaryDirectory() as workdir:
@@ -694,7 +727,7 @@ def render_edl_to_video(
             + ";"
             + "".join(v_inputs)
             + f"concat=n={len(kept_segments)}:v=1:a=0[vcat];"
-            + f"[vcat]{framing['filter']},fps=30{graphics_vf}{extra_title_vf},subtitles=captions.ass,format=yuv420p[vout]"
+            + f"[vcat]{framing['filter']},fps=30{zoom_vf}{graphics_vf}{extra_title_vf},subtitles=captions.ass,format=yuv420p[vout]"
         )
 
         cmd = [
@@ -737,6 +770,7 @@ def render_edl_to_video(
         "framing": framing,
         "caption_info": caption_info,
         "graphics": graphics["summary"],
+        "motion_plan": motion_plan,
         "sfx_loudness_qa": loudness_qa,
         "look_double_draw": look_double_draw
     }

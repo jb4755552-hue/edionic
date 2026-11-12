@@ -8,7 +8,8 @@ Implements all 12 verified presets on 1080x1920 vertical canvas with >= 54 px gl
 5. neon_serif (serif typography + electric neon magenta/cyan outer glow)
 6. condensed (tall Impact condensed display style, ScaleX=82, ScaleY=115)
 7. pill_highlight (opaque box/pill background on active spoken word via BorderStyle=3)
-8. karaoke_pop (active popped word renders centered OVER the phrase)
+8. karaoke_pop (fixed keyword tier above the phrase tier, wrap-proof:
+   the keyword slot and phrase slot are separated by a guaranteed gap)
 9. podcast_two_tier (clean top context line + oversized bottom active word tier)
 10. minimal_clean (crisp thin-outline modern lower-third with accent highlight)
 11. light_sweep_title (title card: glowing serif title with a translucent highlight bar sweeping across it — rendered as a title clip)
@@ -82,8 +83,7 @@ PRESET_CATALOG_INFO: Dict[str, Dict[str, Any]] = {
         "name": "karaoke_pop",
         "label": "Karaoke Pop",
         "type": "ass_word_highlight",
-        "honest_limit": "Popped word renders centered over the phrase.",
-        "description": "Base phrase sits below while the active popped word scales up centered over the phrase."
+        "description": "Base phrase sits below while the active popped word renders in a fixed tier above it, separated by a guaranteed gap (wrap-proof)."
     },
     "podcast_two_tier": {
         "name": "podcast_two_tier",
@@ -121,6 +121,59 @@ def _format_ass_time(seconds: float) -> str:
     if centis >= 100:
         centis = 99
     return f"{hrs}:{mins:02d}:{secs:02d}.{centis:02d}"
+
+
+# ---------------------------------------------------------------------------
+# Two-tier geometry (Batch 3 extension). The karaoke_pop / pill_highlight /
+# podcast_two_tier presets render TWO tiers: a keyword tier and a phrase
+# tier. The old layout bottom-anchored both tiers with fixed MarginV, so a
+# phrase that wrapped to 2 lines grew UPWARD into the keyword tier and the
+# same word rendered twice at the same position (e.g. yellow MILLIONAIRE'S
+# over white MAKES MILLIONAIRE'S). The fix is deterministic:
+# - each tier gets a FIXED slot with a guaranteed gap, sized for the
+#   worst case (2-line phrase + 1-line keyword);
+# - the keyword is fit-to-width so it is ALWAYS one line (a wrapped keyword
+#   would grow down into the phrase slot);
+# - the phrase is split into at most 2 controlled lines, each fit to width,
+#   so it never auto-wraps past its slot.
+# ---------------------------------------------------------------------------
+
+_TWO_TIER_MAX_LINE_W = 900  # usable width: 1080 - 2x70 margins - slack
+_TWO_TIER_CHAR_EM = 0.72    # conservative avg advance for bold caps Arial
+_KARAOKE_KEYWORD_TOP = 1240  # keyword slot top (Alignment 8 + \pos)
+_PILL_KEYWORD_TOP = 1260     # pill slot top (Alignment 8 + \pos)
+
+
+def _est_text_width(text: str, fontsize: float, scale_x: float = 100.0) -> float:
+    """Conservative rendered width estimate for bold caps text."""
+    return len(text) * float(fontsize) * _TWO_TIER_CHAR_EM * (float(scale_x) / 100.0)
+
+
+def _fit_scale(text: str, fontsize: float, scale_x: float, max_width: float) -> float:
+    """Scale percent (<=100) that fits `text` in `max_width`, else 100."""
+    width = _est_text_width(text, fontsize, scale_x)
+    if width <= max_width:
+        return 100.0
+    return max(40.0, max_width / width * 100.0)
+
+
+def _split_phrase_lines(words: List[str], fontsize: float, max_width: float) -> List[str]:
+    """Split chunk words into at most 2 lines, each estimated to fit.
+
+    Prefers one line; otherwise picks the split minimizing the widest line.
+    A single over-wide word stays on its own line and is shrunk by the
+    caller's fit scale instead of wrapping.
+    """
+    full = " ".join(words)
+    if len(words) <= 1 or _est_text_width(full, fontsize) <= max_width:
+        return [full]
+    best = None
+    for k in range(1, len(words)):
+        line1, line2 = " ".join(words[:k]), " ".join(words[k:])
+        widest = max(_est_text_width(line1, fontsize), _est_text_width(line2, fontsize))
+        if best is None or widest < best[0]:
+            best = (widest, [line1, line2])
+    return best[1]
 
 
 def get_light_sweep_ffmpeg_vf(title_text: str = "EDIONIC HOOK") -> str:
@@ -161,7 +214,7 @@ Style: Handwritten,Georgia,82,&H00D8F3FF,&H0050A8FF,&H00141C2B,&H60000000,-1,-1,
 Style: NeonGlow,Georgia,84,&H00FF80FF,&H00FFFF00,&H00FF00FF,&H80000000,-1,0,0,0,100,100,2,0,1,8,0,2,70,70,340,1
 Style: NeonCrisp,Georgia,84,&H00FFFFFF,&H00FFFF00,&H00400040,&H00000000,-1,0,0,0,100,100,2,0,1,2,0,2,70,70,340,1
 Style: Condensed,Impact,92,&H00FFFFFF,&H0000FFAA,&H00101010,&H80000000,-1,0,0,0,82,115,1,0,1,4,3,2,70,70,340,1
-Style: PillBase,Arial,80,&H00E8ECEF,&H00FFFFFF,&H00141820,&H00000000,-1,0,0,0,100,100,1,0,1,3,0,2,70,70,340,1
+Style: PillBase,Arial,80,&H00E8ECEF,&H00FFFFFF,&H00141820,&H00000000,-1,0,0,0,100,100,1,0,1,3,0,2,70,70,300,1
 Style: PillBox,Arial,82,&H00FFFFFF,&H00FFFFFF,&H00FF633B,&H00FF633B,-1,0,0,0,100,100,2,0,3,10,0,2,70,70,435,1
 Style: KaraokePhrase,Arial,76,&H00D0D8E0,&H00FFFFFF,&H0010141C,&H00000000,-1,0,0,0,100,100,1,0,1,3,2,2,70,70,310,1
 Style: KaraokePopWord,Arial,90,&H0000EAFF,&H00FFFFFF,&H0010141C,&H00000000,-1,0,0,0,115,115,2,0,1,4,3,2,70,70,430,1
@@ -301,27 +354,70 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 events.append(f"Dialogue: 1,{start_str},{end_str},Condensed,,0,0,0,,{''.join(parts)}")
 
             elif preset == "pill_highlight":
-                # Base phrase on lower line + active word inside opaque pill box above it
-                phrase_txt = " ".join(str(w.get("word", "")).strip().upper() for w in chunk)
+                # Base phrase on lower tier + active word inside opaque pill
+                # box in a FIXED tier above it (top-anchored \pos). The
+                # phrase is split into at most 2 controlled lines and both
+                # tiers are fit-to-width, so the tiers can never overlap.
+                phrase_words = [str(w.get("word", "")).strip().upper() for w in chunk]
+                phrase_lines = _split_phrase_lines(phrase_words, 80, _TWO_TIER_MAX_LINE_W)
+                phrase_scale = min(
+                    _fit_scale(line, 80, 100, _TWO_TIER_MAX_LINE_W) for line in phrase_lines
+                )
+                phrase_prefix = (
+                    f"{{\\fscx{phrase_scale:.0f}\\fscy{phrase_scale:.0f}}}"
+                    if phrase_scale < 100 else ""
+                )
+                phrase_txt = "\\N".join(phrase_lines)
                 active_txt = str(active_w.get("word", "")).strip().upper()
-                events.append(f"Dialogue: 0,{start_str},{end_str},PillBase,,0,0,0,,{phrase_txt}")
-                events.append(f"Dialogue: 1,{start_str},{end_str},PillBox,,0,0,0,, {active_txt} ")
+                pill_txt = f" {active_txt} "
+                pill_scale = _fit_scale(pill_txt, 82, 100, _TWO_TIER_MAX_LINE_W)
+                pill_prefix = (
+                    f"\\fscx{pill_scale:.0f}\\fscy{pill_scale:.0f}"
+                    if pill_scale < 100 else ""
+                )
+                events.append(f"Dialogue: 0,{start_str},{end_str},PillBase,,0,0,0,,{phrase_prefix}{phrase_txt}")
+                events.append(
+                    f"Dialogue: 1,{start_str},{end_str},PillBox,,0,0,0,,{{\\an8\\pos(540,{_PILL_KEYWORD_TOP}){pill_prefix}}}{pill_txt}"
+                )
 
             elif preset == "karaoke_pop":
-                # Honest limit: popped word renders centered OVER the phrase
-                phrase_txt = " ".join(str(w.get("word", "")).strip().upper() for w in chunk)
+                # Fixed tiers: popped keyword in a top-anchored slot above
+                # the phrase, separated by a guaranteed gap. The keyword is
+                # fit-to-width (always 1 line); the phrase is split into at
+                # most 2 controlled lines. Neither tier can wrap into the
+                # other, so the keyword never renders over the phrase.
+                phrase_words = [str(w.get("word", "")).strip().upper() for w in chunk]
+                phrase_lines = _split_phrase_lines(phrase_words, 76, _TWO_TIER_MAX_LINE_W)
+                phrase_scale = min(
+                    _fit_scale(line, 76, 100, _TWO_TIER_MAX_LINE_W) for line in phrase_lines
+                )
+                phrase_prefix = (
+                    f"{{\\fscx{phrase_scale:.0f}\\fscy{phrase_scale:.0f}}}"
+                    if phrase_scale < 100 else ""
+                )
+                phrase_txt = "\\N".join(phrase_lines)
                 popped_txt = str(active_w.get("word", "")).strip().upper()
-                events.append(f"Dialogue: 0,{start_str},{end_str},KaraokePhrase,,0,0,0,,{phrase_txt}")
+                kw_fit = _fit_scale(popped_txt, 90, 125, _TWO_TIER_MAX_LINE_W)
+                kw_scale = 125.0 * kw_fit / 100.0
+                events.append(f"Dialogue: 0,{start_str},{end_str},KaraokePhrase,,0,0,0,,{phrase_prefix}{phrase_txt}")
                 events.append(
-                    f"Dialogue: 1,{start_str},{end_str},KaraokePopWord,,0,0,0,,{{\\fscx125\\fscy125\\1c&H00EAFF&}}{popped_txt}"
+                    f"Dialogue: 1,{start_str},{end_str},KaraokePopWord,,0,0,0,,{{\\an8\\pos(540,{_KARAOKE_KEYWORD_TOP})\\fscx{kw_scale:.0f}\\fscy{kw_scale:.0f}\\1c&H00EAFF&}}{popped_txt}"
                 )
 
             elif preset == "podcast_two_tier":
+                # Single event, two stacked lines: context above, oversized
+                # active word below. Both lines are fit-to-width so the
+                # stack is always exactly 2 lines — the context can never
+                # wrap and push the tiers apart or into other elements.
                 context_txt = " ".join(str(w.get("word", "")).strip().upper() for w in chunk)
                 active_txt = str(active_w.get("word", "")).strip().upper()
+                ctx_fit = _fit_scale(context_txt, 62, 100, _TWO_TIER_MAX_LINE_W)
+                act_fit = _fit_scale(active_txt, 96, 100, _TWO_TIER_MAX_LINE_W)
+                ctx_fs = 62.0 * ctx_fit / 100.0
+                act_fs = 96.0 * act_fit / 100.0
                 two_tier_line = (
-                    f"{{\\fs62\\1c&HB8C8D8&}}{context_txt}\\N"
-                    f"{{\\fs96\\1c&H00EAFF&\\b1}}{active_txt}"
+                    f"{{\\fs{ctx_fs:.0f}\\1c&HB8C8D8&}}{context_txt}\\N"
+                    f"{{\\fs{act_fs:.0f}\\1c&H00EAFF&\\b1}}{active_txt}"
                 )
                 events.append(f"Dialogue: 1,{start_str},{end_str},PodcastTier,,0,0,0,,{two_tier_line}")
 

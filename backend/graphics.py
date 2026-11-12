@@ -20,8 +20,10 @@ Two mechanisms, both already proven in this pipeline — no new dependencies:
 
 Element types are driven by the storyboard `graphic` field (free text,
 keyword-matched): "Title card", "pill", "proof card", "lower-third",
-"progress bar", "shape", plus "keyword emphasis" for the kinetic pop.
-A job with no V2 clips and no template watermark renders exactly as
+"progress bar", "shape", plus "keyword emphasis" for the kinetic pop,
+"card sequence" for numbered cards with a sweeping path line, and
+"zoom" for punch-in/out on the video itself (zoompan, anchored on the
+face zone). A job with no V2 clips and no template watermark renders exactly as
 before — build_render_graphics() returns has_graphics=False and the
 pipeline changes nothing.
 
@@ -34,6 +36,12 @@ Honest limits (kept, not hidden):
   are square; the pill element uses an ASS-drawn rounded rectangle instead.
 - V2 clip times are treated as output-timeline times (the same convention
   the storyboard round-trip and contact-sheet QA already use).
+- Zoom uses zoompan (crop w/h are fixed at filter config time, so a
+  time-varying crop size is impossible; zoompan's `z` expression with
+  `on`/30 is the working mechanism, verified on ffmpeg 8.1.2). The zoom
+  anchors on the fixed face zone (540, 640), not a per-frame tracked
+  face point, and zoompan processes every frame while zoom segments
+  exist (identity zoom outside segments), which adds render time.
 """
 
 import re
@@ -58,6 +66,13 @@ SHAPE_CENTER = (890, 200)
 SHAPE_RADIUS = 70
 EMPHASIS_POS = (540, 1050)
 WATERMARK_POS = (70, 1850)
+CARDS_ROW = {"x": 60, "y": 720, "w": 960, "h": 260}
+CARDS_LINE_Y = 690
+CARDS_LINE_H = 6
+CARDS_GAP = 20
+ZOOM_ANCHOR = (540, 640)  # face zone: eyes upper-third after face-anchored crop
+ZOOM_MAX_SEGMENTS = 6
+ZOOM_MAX_PUNCH = 0.18
 
 CARD_BG = "#11141C"
 CARD_ALPHA = 0.85
@@ -74,6 +89,8 @@ _HEX_RE = re.compile(r"^#([0-9a-fA-F]{6})$")
 # Keyword match order matters: "lower pill highlight" must hit pill, and
 # "title" must not swallow "title card" checks done earlier. First match wins.
 _CLASSIFIERS: List[Tuple[Tuple[str, ...], str]] = [
+    (("zoom", "punch"), "zoom"),
+    (("card sequence", "card_sequence", "numbered cards", "step cards"), "card_sequence"),
     (("lower-third", "lower third", "lowerthird"), "lower_third"),
     (("title card", "title banner", "hook title"), "title_card"),
     (("pill",), "pill"),
@@ -95,6 +112,8 @@ GFX_STYLES = [
     "Style: GfxEmphasis,Impact,108,&H00FFFFFF,&H00FFFFFF,&H00101010,&H80000000,-1,0,0,0,100,100,2,0,1,5,3,5,60,60,0,1",
     "Style: GfxShape,Arial,100,&H00FFFFFF,&H00FFFFFF,&H00FFFFFF,&H00000000,0,0,0,0,100,100,0,0,1,0,0,7,0,0,0,1",
     "Style: GfxWatermark,Arial,36,&H80FFFFFF,&H80FFFFFF,&H80000000,&H00000000,-1,0,0,0,100,100,1,0,1,2,0,1,60,60,40,1",
+    "Style: GfxCardNum,Arial,84,&H00FFFFFF,&H00FFFFFF,&H00101010,&H80000000,-1,0,0,0,100,100,1,0,1,4,2,8,60,60,0,1",
+    "Style: GfxCardLabel,Arial,36,&H00D8DEE9,&H00D8DEE9,&H00101010,&H80000000,-1,0,0,0,100,100,1,0,1,3,0,8,60,60,0,1",
 ]
 
 # Graphics draw above captions (captions use layers 0-3).
@@ -329,6 +348,98 @@ def _progress_bar(start: float, end: float, accent: str, scale: int):
     return [], vf
 
 
+def _card_sequence(start: float, end: float, cards: List[Dict[str, Any]], accent: str, scale: int):
+    """N numbered cards in a row + a path line sweeping left-to-right.
+
+    A faint track line sits above the cards; the accent fill grows along
+    it in enable-gated segments (same mechanism as the progress bar), a
+    diamond head slides along the line via ASS \\move, and each card
+    switches to its highlight (accent border + top bar) exactly when the
+    line reaches the card's centre: hit_i = start + span*(i+0.5)/n.
+
+    drawbox geometry uses scaled coordinates; ASS text/drawing positions
+    stay on the unscaled 1080x1920 grid (libass scales them to 4K).
+    """
+    n = max(1, min(6, len(cards)))
+    cards = cards[:n]
+    span = max(0.25, end - start)
+    row = {k: v * scale for k, v in CARDS_ROW.items()}
+    gap = CARDS_GAP * scale
+    cw = (row["w"] - gap * (n - 1)) // n
+    line_y = CARDS_LINE_Y * scale
+    line_h = CARDS_LINE_H * scale
+    x0, x1 = row["x"], row["x"] + row["w"]
+
+    vf = [_drawbox(x0, line_y, row["w"], line_h, "#FFFFFF@0.25", start, end)]
+    m = max(20, min(120, int(round(span * 10))))
+    for j in range(m):
+        seg_start = start + span * j / m
+        sx = round(x0 + row["w"] * j / m)
+        ex = round(x0 + row["w"] * (j + 1) / m)
+        vf.append(_drawbox(sx, line_y, ex - sx, line_h, accent, seg_start, end))
+
+    events = []
+    dur_ms = max(100, int(span * 1000))
+    dot_r = 14
+    dot_path = f"m 0 {-dot_r} l {dot_r} 0 l 0 {dot_r} l {-dot_r} 0"
+    events.append(_dialogue(
+        start, end, "GfxShape",
+        "{\\an5\\move(%d,%d,%d,%d,0,%d)\\p1\\1c%s\\fad(100,100)}%s{\\p0}"
+        % (CARDS_ROW["x"], CARDS_LINE_Y + CARDS_LINE_H // 2,
+           CARDS_ROW["x"] + CARDS_ROW["w"], CARDS_LINE_Y + CARDS_LINE_H // 2,
+           dur_ms, _hex_to_ass_color(accent), dot_path),
+    ))
+
+    cw_u = (CARDS_ROW["w"] - CARDS_GAP * (n - 1)) // n
+    for i, card in enumerate(cards):
+        cx0 = x0 + i * (cw + gap)
+        vf.append(_drawbox(cx0, row["y"], cw, row["h"], f"{CARD_BG}@0.88", start, end))
+        vf.append(_drawbox(cx0, row["y"], cw, row["h"], "#3A4356", start, end,
+                           thickness=str(3 * scale)))
+        hit = start + span * (i + 0.5) / n
+        vf.append(_drawbox(cx0, row["y"], cw, row["h"], accent, hit, end,
+                           thickness=str(6 * scale)))
+        vf.append(_drawbox(cx0, row["y"], cw, 10 * scale, accent, hit, end))
+        cx_u = CARDS_ROW["x"] + i * (cw_u + CARDS_GAP) + cw_u // 2
+        number = _clean_ass_text(card.get("number", str(i + 1)))
+        events.append(_dialogue(
+            start, end, "GfxCardNum",
+            "{\\pos(%d,748)\\fad(120,120)}" % cx_u + number,
+        ))
+        label = _clean_ass_text(card.get("label", ""))
+        if label:
+            events.append(_dialogue(
+                start, end, "GfxCardLabel",
+                "{\\pos(%d,872)\\fad(120,120)}" % cx_u
+                + _wrap_two_lines(label, 12),
+            ))
+    return events, vf
+
+
+def _zoom_expression(segments: List[Tuple[float, float, float]], scale: int) -> str:
+    """One zoompan filter fragment combining every zoom segment.
+
+    crop w/h are fixed at filter config time, so a time-varying crop size
+    is impossible; zoompan's `z` expression is the working mechanism. The
+    fragment sits after fps=30, so `on`/30 is output seconds. Each segment
+    eases in/out over 0.4s (trapezoid); total punch is capped. The zoom
+    anchors on the face zone so the speaker stays framed.
+    """
+    terms = []
+    for (s, e, amt) in segments:
+        rise = f"min(1,max(0,((on/30)-{s:.3f})/0.400))"
+        fall = f"min(1,max(0,({e:.3f}-(on/30))/0.400))"
+        terms.append(f"{amt:.3f}*{rise}*{fall}")
+    punch = "+".join(terms) if terms else "0"
+    z = f"(1+min({ZOOM_MAX_PUNCH:.3f},{punch}))"
+    ax, ay = ZOOM_ANCHOR[0] * scale, ZOOM_ANCHOR[1] * scale
+    w, h = 1080 * scale, 1920 * scale
+    return (
+        f"zoompan=z='{z}':x='{ax}*(1-1/zoom)':y='{ay}*(1-1/zoom)'"
+        f":d=1:s={w}x{h}:fps=30"
+    )
+
+
 def _shape(start: float, end: float, accent: str, scale: int):
     cx, cy = SHAPE_CENTER
     r = SHAPE_RADIUS
@@ -422,6 +533,7 @@ def build_render_graphics(
 
     ass_events: List[str] = []
     vf_fragments: List[str] = []
+    zoom_segments: List[Tuple[float, float, float]] = []
     elements: List[Dict[str, Any]] = []
 
     for clip in v2_clips:
@@ -474,6 +586,16 @@ def build_render_graphics(
         elif element == "emphasis":
             phrase = " ".join(block_text.split()[:3]) or _meaningful_title(clip.get("title"))
             events, frags = _emphasis(start, end, phrase, accent, scale)
+        elif element == "card_sequence":
+            cards = clip.get("cards")
+            if not isinstance(cards, list) or not cards:
+                cards = [{"number": str(i + 1), "label": ""} for i in range(3)]
+            events, frags = _card_sequence(start, end, cards, accent, scale)
+        elif element == "zoom":
+            amount = float(clip.get("amount", 0.12) or 0.12)
+            amount = max(0.05, min(0.15, amount))
+            zoom_segments.append((start, end, amount))
+            events, frags = [], []
         else:  # pragma: no cover - classify_graphic only returns these
             continue
 
@@ -501,18 +623,30 @@ def build_render_graphics(
                 "graphic": "template watermark",
             })
 
-    has_graphics = bool(ass_events or vf_fragments)
+    # Zoom segments combine into a single zoompan fragment. It must run
+    # BEFORE the drawbox fragments (graphics stay fixed while the video
+    # punches in), so it is returned separately: the pipeline inserts
+    # zoom_fragments right after fps=30, ahead of vf_fragments.
+    zoom_segments.sort()
+    zoom_fragments: List[str] = []
+    if zoom_segments:
+        zoom_fragments = [_zoom_expression(zoom_segments[:ZOOM_MAX_SEGMENTS], scale)]
+
+    has_graphics = bool(ass_events or vf_fragments or zoom_fragments)
     return {
         "has_graphics": has_graphics,
         "ass_styles": list(GFX_STYLES) if ass_events else [],
         "ass_events": ass_events,
         "vf_fragments": vf_fragments,
+        "zoom_fragments": zoom_fragments,
         "elements": elements,
         "summary": {
             "element_count": len(elements),
             "elements": elements,
             "ass_event_count": len(ass_events),
             "vf_fragment_count": len(vf_fragments),
+            "zoom_segment_count": len(zoom_segments),
+            "zoom_fragment_count": len(zoom_fragments),
         },
     }
 
