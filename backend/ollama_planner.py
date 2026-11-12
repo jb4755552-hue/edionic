@@ -141,7 +141,10 @@ def _build_prompt(transcript: str, duration: float, title_text: str,
         "ELEMENT TYPES:\n" + _ELEMENT_HELP + "\n\n"
         "RULES:\n"
         "- At most 6 segments. Times in seconds, within the video duration.\n"
-        "- At most ONE card_sequence, and NO other drawn segment may overlap it (zoom may overlap it).\n"
+        "- At most ONE card_sequence — merge ALL list/steps speech into that\n"
+        "  one sequence, never emit two — and NO other drawn segment may\n"
+        "  overlap it (zoom may overlap it): place pills/proof cards before\n"
+        "  it starts or after it ends.\n"
         "- A hook title_card starting at 0.0 is REQUIRED unless one already renders.\n"
         "- Keep text short, uppercase-friendly, taken from the spoken words.\n"
         "- Use ONLY words and numbers from the transcript; never copy text "
@@ -246,10 +249,12 @@ def _validate_plan(payload: Any, duration: float, hook_card_present: bool,
     card_sequence protected, shape / extra pills dropped first), times are
     clamped into [0, duration], sub-0.5s segments are extended to 0.5s (or
     dropped when the extension would overlap the card_sequence span or
-    cannot fit). Only STRUCTURAL problems still reject the whole plan:
-    unknown element type, missing text on text-bearing types, malformed
-    card payloads, >1 card_sequence, drawn overlap with the card_sequence
-    span, missing hook title. The suggested template_id / style_preset are
+    cannot fit), extra card_sequences are dropped (first kept), and a drawn
+    segment overlapping the card_sequence span is trimmed to end before it
+    starts / start after it ends (or dropped when <0.5s would remain).
+    Only STRUCTURAL problems still reject the whole plan: unknown element
+    type, missing text on text-bearing types, malformed card payloads,
+    missing hook title. The suggested template_id / style_preset are
     advisory only (never applied), so an unknown or missing suggestion is
     recorded in meta as ignored and never rejects the plan."""
     if not isinstance(payload, dict):
@@ -285,8 +290,21 @@ def _validate_plan(payload: Any, duration: float, hook_card_present: bool,
             f"truncated {len(raw_segments)} segments to {len(kept_raw)} "
             "(kept hook title + card_sequence, dropped shape/extra pills first)")
 
-    # >1 card_sequence is structural — checked on the kept set, so a second
-    # one dropped by truncation does not sink the plan.
+    # >1 card_sequence is a repair, not a rejection: the 3b model often
+    # emits one sequence per list item. Keep the FIRST, drop the rest —
+    # the kept one still carries the list, and a second sequence would
+    # collide with it visually anyway.
+    _seen_card_seq = False
+    deduped_raw: List[Any] = []
+    for seg in kept_raw:
+        if isinstance(seg, dict) and str(seg.get("type") or "") == "card_sequence":
+            if _seen_card_seq:
+                repaired.append("dropped an extra card_sequence (kept the first)")
+                continue
+            _seen_card_seq = True
+        deduped_raw.append(seg)
+    kept_raw = deduped_raw
+
     card_count = sum(
         1 for seg in kept_raw
         if isinstance(seg, dict) and str(seg.get("type") or "") == "card_sequence")
@@ -385,21 +403,54 @@ def _validate_plan(payload: Any, duration: float, hook_card_present: bool,
     if not segments:
         return None, "plan has no usable segments after repair", {}
 
-    # Drawn overlap is structural: checked on the repaired times.
+    # Drawn overlap with the card_sequence span is a repair, not a
+    # rejection: the card sequence is the anchor (it owns the graphics
+    # band y 995-1230), so an overlapping drawn segment is trimmed to
+    # end before the span starts / start after it ends, or dropped when
+    # less than 0.5s would remain. Zoom is a video effect, not a drawn
+    # graphic: a punch-in over the card span is intended (the rules
+    # planner does the same) and cannot collide visually.
     final_span: Optional[Tuple[float, float]] = None
     for seg in segments:
         if seg["type"] == "card_sequence":
             final_span = (seg["start"], seg["end"])
             break
     if final_span is not None:
+        kept_segments: List[Dict[str, Any]] = []
         for seg in segments:
-            if seg["type"] in ("card_sequence", "zoom"):
-                # Zoom is a video effect, not a drawn graphic: a punch-in
-                # over the card span is intended (the rules planner does
-                # the same) and cannot collide visually.
+            if seg["type"] in ("card_sequence", "zoom") \
+                    or not _overlaps((seg["start"], seg["end"]), final_span):
+                kept_segments.append(seg)
                 continue
-            if _overlaps((seg["start"], seg["end"]), final_span):
-                return None, "a segment overlaps the card_sequence span", {}
+            cs, ce = final_span
+            before = cs - seg["start"]
+            after = seg["end"] - ce
+            if before >= 0.5:
+                # Prefer trimming the end: it preserves a start-anchored
+                # segment (e.g. a hook title_card at 0.0 stays a hook).
+                repaired.append(
+                    f"trimmed segment ({seg['type']}) to end at "
+                    f"card_sequence start [{seg['start']:.1f}, {cs:.1f}]")
+                seg["end"] = round(cs, 3)
+                kept_segments.append(seg)
+            elif after >= 0.5:
+                repaired.append(
+                    f"trimmed segment ({seg['type']}) to start at "
+                    f"card_sequence end [{ce:.1f}, {seg['end']:.1f}]")
+                seg["start"] = round(ce, 3)
+                if seg["type"] == "title_card":
+                    # It no longer starts at 0.0, so it is not a hook.
+                    has_hook_title = False
+                kept_segments.append(seg)
+            else:
+                repaired.append(
+                    f"dropped segment ({seg['type']}) overlapping the "
+                    "card_sequence span with <0.5s trimmable on either side")
+                if seg["type"] == "title_card":
+                    has_hook_title = False
+        segments = kept_segments
+        if not segments:
+            return None, "plan has no usable segments after repair", {}
     if not hook_card_present and not has_hook_title:
         return None, "plan has no hook title_card starting at 0.0", {}
 
