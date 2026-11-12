@@ -38,10 +38,19 @@ from typing import Any, Dict, List, Optional, Tuple
 
 _ALLOWED_TYPES = {
     "title_card", "pill", "proof_card", "lower_third", "progress_bar",
-    "shape", "emphasis", "card_sequence", "zoom",
+    "shape", "emphasis", "card_sequence", "zoom", "keyword_pop",
 }
-_TEXT_REQUIRED = {"title_card", "pill", "proof_card", "lower_third", "emphasis"}
+_TEXT_REQUIRED = {"title_card", "pill", "proof_card", "lower_third", "emphasis", "keyword_pop"}
 _MAX_SEGMENTS = 6
+_MAX_KEYWORD_POPS = 40
+_POP_MAX_LEN = 2.5
+_POP_COLORS = {"neutral", "bad", "good", "key"}
+# In keyword-punch mode only these types may render: pops own the frame,
+# everything else is gap-only support. title_card/lower_third/
+# progress_bar/emphasis are dropped (the prompt forbids them there).
+_KEYWORD_PUNCH_ALLOWED = {
+    "keyword_pop", "pill", "proof_card", "card_sequence", "shape", "zoom",
+}
 _MAX_TEXT_LEN = 60
 _MAX_LABEL_LEN = 16
 _MAX_TRANSCRIPT_WORDS = 500
@@ -50,7 +59,7 @@ _FALLBACK_TEMPLATE_IDS = [
     "saas_dark_premium", "saas_clean_flat", "talking_head_pro",
     "trust_talking_head", "split_screen_breakdown", "screen_record_tutorial",
     "archival_documentary", "portfolio_showreel", "ai_showcase_desk",
-    "local_language_demo", "gaming_montage",
+    "local_language_demo", "gaming_montage", "devin_keyword_punch",
 ]
 _FALLBACK_STYLE_IDS = [
     "smoke2_style", "vox_explainer_style", "neon_aura_style",
@@ -71,6 +80,11 @@ emphasis: kinetic pop of a key phrase, mid-frame.
 card_sequence: numbered cards 1..N in a row with a line sweeping across them, each card highlighting when the line hits it. Use ONLY for list/steps speech (first/second/third, step 1/2/3).
 zoom: punch-in on the speaker, no text. Use sparingly (hook + big moments)."""
 
+# Keyword-punch element help: ONLY shown to the model in keyword_punch
+# mode, so normal-mode plans never contain keyword_pop segments.
+_KEYWORD_POP_HELP = """\
+keyword_pop: HUGE mid-frame keyword punch, 1-3 words, the ONLY text on screen. Replaces captions entirely. Each pop has a "color": "neutral" (white, plain words), "bad" (bright red, bad/old/negative phrases), "good" (bright green, good/new power words, numbers, money), "key" (bright blue, THE key term of the video)."""
+
 _EXAMPLE = """\
 {"template_id": "talking_head_pro", "style_preset": "smoke2_style", "segments": [
  {"type": "title_card", "start_s": 0.0, "end_s": 3.0, "text": "EXAMPLE WORDS"},
@@ -78,6 +92,67 @@ _EXAMPLE = """\
  {"type": "zoom", "start_s": 3.7, "end_s": 11.5, "amount": 0.1},
  {"type": "proof_card", "start_s": 13.0, "end_s": 15.5, "text": "EXAMPLE NUMBER"}
 ]}"""
+
+_EXAMPLE_KEYWORD_PUNCH = """\
+{"template_id": "devin_keyword_punch", "style_preset": "creator_motion_graphics_style", "segments": [
+ {"type": "keyword_pop", "start_s": 0.0, "end_s": 1.4, "text": "EXAMPLE HOOK", "color": "key"},
+ {"type": "keyword_pop", "start_s": 1.6, "end_s": 3.0, "text": "EXAMPLE OLD WAY", "color": "bad"},
+ {"type": "keyword_pop", "start_s": 3.2, "end_s": 4.6, "text": "EXAMPLE NEW WAY", "color": "good"},
+ {"type": "zoom", "start_s": 0.0, "end_s": 3.0, "amount": 0.12},
+ {"type": "proof_card", "start_s": 5.0, "end_s": 7.0, "text": "EXAMPLE NUMBER"}
+]}"""
+
+
+def _norm_token(token: str) -> str:
+    """Lowercase, strip surrounding punctuation; internal dots/digits stay."""
+    return re.sub(r"^[^\w$%]+|[^\w%$]+$", "", str(token or "").lower())
+
+
+def _transcript_tokens(words: List[Dict[str, Any]]) -> List[str]:
+    tokens = [_norm_token(w.get("word", "")) for w in (words or [])]
+    return [t for t in tokens if t]
+
+
+_MAGNITUDE_WORDS = {"k": "thousand", "m": "million", "b": "billion"}
+
+
+def _token_matches(text_token: str, transcript_token: str) -> bool:
+    """One token equal after normalization, or numerically equal
+    ignoring currency/magnitude letters ("$5" == "5", "1.2m" == "1.2")."""
+    if text_token == transcript_token:
+        return True
+    if not any(c.isdigit() for c in text_token):
+        return False
+    num_a = re.sub(r"[^\d.]", "", text_token)
+    num_b = re.sub(r"[^\d.]", "", transcript_token)
+    return bool(num_a) and num_a == num_b
+
+
+def _is_grounded(text: str, transcript_tokens: List[str]) -> bool:
+    """True when `text` appears as a contiguous word sequence in the
+    transcript (case-insensitive, punctuation ignored). Magnitude
+    shorthands expand first ("1.2m" -> "1.2 million") so proof numbers
+    spoken as words still ground. Kills hallucinated card labels, pill
+    text, proof text and keywords that the speaker never said."""
+    text_tokens: List[str] = []
+    for raw in str(text or "").split():
+        token = _norm_token(raw)
+        if not token:
+            continue
+        match = re.match(r"^(\d+(?:\.\d+)?)([kmb])$", token)
+        if match:
+            text_tokens.append(match.group(1))
+            text_tokens.append(_MAGNITUDE_WORDS[match.group(2)])
+        else:
+            text_tokens.append(token)
+    if not text_tokens or not transcript_tokens:
+        return False
+    width = len(text_tokens)
+    for i in range(len(transcript_tokens) - width + 1):
+        if all(_token_matches(t, transcript_tokens[i + j])
+               for j, t in enumerate(text_tokens)):
+            return True
+    return False
 
 
 def _ollama_config() -> Dict[str, Any]:
@@ -132,20 +207,54 @@ def _compact_transcript(words: List[Dict[str, Any]]) -> str:
 def _build_prompt(transcript: str, duration: float, title_text: str,
                   hook_card_present: bool, template_id: Optional[str],
                   style_preset: Optional[str],
-                  template_ids: List[str], style_ids: List[str]) -> Tuple[str, str]:
-    system = (
-        "You are the motion design planner for Edionic, a 9:16 vertical "
-        "short-form video editor. Given a transcript with word timestamps, "
-        "plan timed motion graphics. Reply with ONE JSON object only, no "
-        "markdown, no explanation.\n\n"
-        "ELEMENT TYPES:\n" + _ELEMENT_HELP + "\n\n"
-        "RULES:\n"
+                  template_ids: List[str], style_ids: List[str],
+                  keyword_punch: bool = False) -> Tuple[str, str]:
+    element_help = _ELEMENT_HELP
+    if keyword_punch:
+        element_help += "\n" + _KEYWORD_POP_HELP
+    rules = (
         "- At most 6 segments. Times in seconds, within the video duration.\n"
+        if not keyword_punch else
+        "- At most 6 graphic segments + up to 40 keyword_pop segments. "
+        "Times in seconds, within the video duration.\n"
+    )
+    rules += (
         "- At most ONE card_sequence — merge ALL list/steps speech into that\n"
         "  one sequence, never emit two — and NO other drawn segment may\n"
         "  overlap it (zoom may overlap it): place pills/proof cards before\n"
         "  it starts or after it ends.\n"
-        "- A hook title_card starting at 0.0 is REQUIRED unless one already renders.\n"
+        "- NEVER emit card_sequence unless the speaker literally lists steps\n"
+        "  (first/second/third, step 1/2/3, one/two/three in ascending\n"
+        "  order). A topic the speaker does NOT list as steps gets NO\n"
+        "  card_sequence — never force cards onto non-list speech.\n"
+        "- pill/proof_card ONLY for genuine number/money/emphasis moments\n"
+        "  spoken in the transcript. Graphics only where needed.\n"
+    )
+    if keyword_punch:
+        rules += (
+            "- KEYWORD PUNCH MODE: NO title_card at all — the first\n"
+            "  keyword_pop IS the hook and must start within the first\n"
+            "  second. Emit ONLY keyword_pop, zoom, and (sparingly, in\n"
+            "  gaps) proof_card/pill/card_sequence. NO title_card, NO\n"
+            "  lower_third, NO progress_bar, NO emphasis.\n"
+            "- Emit one keyword_pop per ~1-3 second beat covering the\n"
+            "  WHOLE video: the salient 1-3 word phrase spoken in that\n"
+            "  beat (emphasis words, numbers, contrast pairs, topic\n"
+            "  terms). 1-3 words ONLY, timed ON the spoken words,\n"
+            "  0.5-2.5s each. Pops must NEVER overlap each other.\n"
+            "- Every keyword_pop needs a color: neutral/bad/good/key\n"
+            "  (see element help). White for plain words, red for\n"
+            "  bad/old phrases, green for good/new power words and\n"
+            "  numbers, blue for THE key term of the video.\n"
+            "- NO drawn segment may overlap a keyword_pop window (zoom\n"
+            "  may): proof cards/pills go ONLY in gaps between pops, or\n"
+            "  are skipped. ONE text on screen at a time.\n"
+        )
+    else:
+        rules += (
+            "- A hook title_card starting at 0.0 is REQUIRED unless one already renders.\n"
+        )
+    rules += (
         "- Keep text short, uppercase-friendly, taken from the spoken words.\n"
         "- Use ONLY words and numbers from the transcript; never copy text "
         "from this example.\n"
@@ -157,13 +266,28 @@ def _build_prompt(transcript: str, duration: float, title_text: str,
         "exactly from the STYLES list, never invent one.\n\n"
         "TEMPLATES: " + ", ".join(template_ids) + "\n"
         "STYLES: " + ", ".join(style_ids) + "\n\n"
-        "EXAMPLE:\n" + _EXAMPLE
+        "EXAMPLE:\n" + (_EXAMPLE_KEYWORD_PUNCH if keyword_punch else _EXAMPLE)
     )
-    hook_note = (
-        "A hook title card already renders for the first 3 seconds; do NOT add another title_card."
-        if hook_card_present else
-        "No hook title card renders yet; the plan MUST start with a title_card at 0.0."
+    system = (
+        "You are the motion design planner for Edionic, a 9:16 vertical "
+        "short-form video editor. Given a transcript with word timestamps, "
+        "plan timed motion graphics. Reply with ONE JSON object only, no "
+        "markdown, no explanation.\n\n"
+        "ELEMENT TYPES:\n" + element_help + "\n\n"
+        "RULES:\n" + rules
     )
+    if keyword_punch:
+        hook_note = (
+            "KEYWORD PUNCH MODE: no title card — the first keyword_pop is "
+            "the hook and must start within the first second. Cover the "
+            "whole video with keyword pops, one per beat."
+        )
+    else:
+        hook_note = (
+            "A hook title card already renders for the first 3 seconds; do NOT add another title_card."
+            if hook_card_present else
+            "No hook title card renders yet; the plan MUST start with a title_card at 0.0."
+        )
     user = (
         f"Video duration: {duration:.1f} seconds.\n"
         f"Video title: {title_text or '(none)'}\n"
@@ -243,7 +367,9 @@ def _truncate_segments(raw_segments: List[Any]) -> List[Any]:
 
 
 def _validate_plan(payload: Any, duration: float, hook_card_present: bool,
-                   template_ids: List[str], style_ids: List[str]) -> Tuple[Optional[List[Dict[str, Any]]], str, Dict[str, Any]]:
+                   template_ids: List[str], style_ids: List[str],
+                   keyword_punch: bool = False,
+                   words: Optional[List[Dict[str, Any]]] = None) -> Tuple[Optional[List[Dict[str, Any]]], str, Dict[str, Any]]:
     """Repair-then-validate. Mechanical violations are REPAIRED and recorded
     in meta["repaired"]: too many segments are truncated (hook title_card +
     card_sequence protected, shape / extra pills dropped first), times are
@@ -256,13 +382,31 @@ def _validate_plan(payload: Any, duration: float, hook_card_present: bool,
     type, missing text on text-bearing types, malformed card payloads,
     missing hook title. The suggested template_id / style_preset are
     advisory only (never applied), so an unknown or missing suggestion is
-    recorded in meta as ignored and never rejects the plan."""
+    recorded in meta as ignored and never rejects the plan.
+
+    Batch 5: in keyword_punch mode, keyword_pop segments get their own cap
+    (40, separate from the 6-graphic cap), 1-3 words, 0.5-2.5s, their own
+    color role, no pop-pop overlap, and pops WIN over any drawn segment
+    overlapping their window (trimmed into a gap or dropped); the hook
+    title requirement is waived (the first pop IS the hook) and replaced
+    by a >=1 keyword_pop requirement; title_card/lower_third/
+    progress_bar/emphasis are dropped. In normal mode keyword_pop
+    segments are dropped (they only render with the keyword_punch
+    preset). GROUNDING (both modes, when `words` is given): pill text,
+    proof text, card labels and keyword text must appear as contiguous
+    word sequences in the transcript — ungrounded text is dropped, so
+    hallucinated cards and wrong-word graphics can never render.
+    Title cards / lower-thirds / emphasis are exempt: hook titles are
+    summaries, not quotes."""
     if not isinstance(payload, dict):
         return None, "model reply is not a JSON object", {}
     raw_segments = payload.get("segments")
     if not isinstance(raw_segments, list) or not raw_segments:
         return None, "plan has no segments list", {}
     duration = float(duration)
+    transcript_tokens = _transcript_tokens(words) if words else []
+    if not transcript_tokens:
+        transcript_tokens = None  # no transcript: grounding skipped, never blocks
 
     meta: Dict[str, Any] = {}
     # The suggestions are advisory only and NEVER applied (the job's own
@@ -284,11 +428,30 @@ def _validate_plan(payload: Any, duration: float, hook_card_present: bool,
             meta["suggested_style_invalid"] = str(suggested_style)
 
     repaired: List[str] = []
-    kept_raw = _truncate_segments(raw_segments)
-    if len(kept_raw) < len(raw_segments):
-        repaired.append(
-            f"truncated {len(raw_segments)} segments to {len(kept_raw)} "
-            "(kept hook title + card_sequence, dropped shape/extra pills first)")
+    if keyword_punch:
+        # Pops get their own cap (40), separate from the 6-graphic cap:
+        # a 30s video needs ~15 pops, and capping them at 6 would gut
+        # the style. Graphics still truncate by the existing ranking.
+        pop_raw = [s for s in raw_segments
+                   if isinstance(s, dict) and str(s.get("type") or "") == "keyword_pop"]
+        other_raw = [s for s in raw_segments
+                     if not (isinstance(s, dict) and str(s.get("type") or "") == "keyword_pop")]
+        kept_raw = _truncate_segments(other_raw)
+        if len(kept_raw) < len(other_raw):
+            repaired.append(
+                f"truncated {len(other_raw)} graphic segments to {len(kept_raw)} "
+                "(kept hook title + card_sequence, dropped shape/extra pills first)")
+        if len(pop_raw) > _MAX_KEYWORD_POPS:
+            repaired.append(
+                f"truncated {len(pop_raw)} keyword pops to {_MAX_KEYWORD_POPS}")
+            pop_raw = pop_raw[:_MAX_KEYWORD_POPS]
+        kept_raw = kept_raw + pop_raw
+    else:
+        kept_raw = _truncate_segments(raw_segments)
+        if len(kept_raw) < len(raw_segments):
+            repaired.append(
+                f"truncated {len(raw_segments)} segments to {len(kept_raw)} "
+                "(kept hook title + card_sequence, dropped shape/extra pills first)")
 
     # >1 card_sequence is a repair, not a rejection: the 3b model often
     # emits one sequence per list item. Keep the FIRST, drop the rest —
@@ -332,6 +495,14 @@ def _validate_plan(payload: Any, duration: float, hook_card_present: bool,
         seg_type = str(raw.get("type") or "").strip()
         if seg_type not in _ALLOWED_TYPES:
             return None, f"segment {idx} has unknown type: {seg_type!r}", {}
+        if seg_type == "keyword_pop" and not keyword_punch:
+            repaired.append(
+                f"dropped segment {idx} (keyword_pop): pops only render in keyword_punch mode")
+            continue
+        if keyword_punch and seg_type not in _KEYWORD_PUNCH_ALLOWED:
+            repaired.append(
+                f"dropped segment {idx} ({seg_type}): not allowed in keyword_punch mode")
+            continue
         start = raw.get("start_s")
         end = raw.get("end_s")
         if isinstance(start, bool) or isinstance(end, bool) \
@@ -370,6 +541,11 @@ def _validate_plan(payload: Any, duration: float, hook_card_present: bool,
                 f"extended segment {idx} ({seg_type}) to 0.5s "
                 f"[{new_start:.1f}, {new_end:.1f}]")
             start, end = new_start, new_end
+        if seg_type == "keyword_pop" and end - start > _POP_MAX_LEN:
+            repaired.append(
+                f"clamped segment {idx} (keyword_pop) to {_POP_MAX_LEN}s "
+                f"[{start:.1f}, {start + _POP_MAX_LEN:.1f}]")
+            end = start + _POP_MAX_LEN
 
         seg: Dict[str, Any] = {"type": seg_type, "start": round(start, 3), "end": round(end, 3)}
         if seg_type in _TEXT_REQUIRED:
@@ -377,6 +553,14 @@ def _validate_plan(payload: Any, duration: float, hook_card_present: bool,
             if not text:
                 return None, f"segment {idx} ({seg_type}) has no text", {}
             seg["text"] = text
+        if seg_type == "keyword_pop":
+            pop_words = seg["text"].split()
+            if len(pop_words) > 3:
+                seg["text"] = " ".join(pop_words[:3])
+                repaired.append(
+                    f"trimmed segment {idx} (keyword_pop) text to 3 words: {seg['text']!r}")
+            color = str(raw.get("color") or "neutral").strip().lower()
+            seg["color"] = color if color in _POP_COLORS else "neutral"
         if seg_type == "title_card" and start <= 0.5:
             has_hook_title = True
         if seg_type == "card_sequence":
@@ -398,6 +582,34 @@ def _validate_plan(payload: Any, duration: float, hook_card_present: bool,
             if isinstance(amount, bool) or not isinstance(amount, (int, float)):
                 return None, "zoom amount is not numeric", {}
             seg["amount"] = max(0.05, min(0.15, float(amount)))
+        if transcript_tokens is not None:
+            # Grounding: pill/proof/card-label/keyword text must be words
+            # the speaker actually said, in order. Ungrounded text is
+            # dropped (repair), never rendered — a hallucinated pop must
+            # not kill the 15 good ones around it.
+            if seg_type in ("pill", "proof_card"):
+                if not _is_grounded(seg["text"], transcript_tokens):
+                    repaired.append(
+                        f"dropped ungrounded {seg_type} text: {seg['text']!r}")
+                    continue
+            elif seg_type == "card_sequence":
+                grounded_cards = [
+                    c for c in seg["cards"]
+                    if _is_grounded(c["label"], transcript_tokens)]
+                if len(grounded_cards) < len(seg["cards"]):
+                    repaired.append(
+                        f"dropped {len(seg['cards']) - len(grounded_cards)} "
+                        "ungrounded card label(s)")
+                if len(grounded_cards) < 2:
+                    repaired.append(
+                        "dropped card_sequence with fewer than 2 grounded labels")
+                    continue
+                seg["cards"] = grounded_cards
+            elif seg_type == "keyword_pop":
+                if not _is_grounded(seg["text"], transcript_tokens):
+                    repaired.append(
+                        f"dropped ungrounded keyword_pop: {seg['text']!r}")
+                    continue
         segments.append(seg)
 
     if not segments:
@@ -451,7 +663,66 @@ def _validate_plan(payload: Any, duration: float, hook_card_present: bool,
         segments = kept_segments
         if not segments:
             return None, "plan has no usable segments after repair", {}
-    if not hook_card_present and not has_hook_title:
+    if keyword_punch:
+        # Pops never overlap each other: shift a pop's start to the
+        # previous pop's end, or drop it when <0.5s would remain. Then
+        # pops WIN over any drawn segment overlapping their window: the
+        # segment is trimmed into a gap (end before the first overlapping
+        # pop, or start after the last) or dropped. Zoom is a video
+        # effect, not a drawn graphic, and is exempt — a punch-in under
+        # a pop is intended.
+        segments.sort(key=lambda s: s["start"])
+        deoverlapped: List[Dict[str, Any]] = []
+        prev_pop_end = 0.0
+        for seg in segments:
+            if seg["type"] != "keyword_pop":
+                deoverlapped.append(seg)
+                continue
+            if seg["start"] < prev_pop_end:
+                if seg["end"] - prev_pop_end < 0.5:
+                    repaired.append(
+                        f"dropped keyword_pop {seg['text']!r} overlapping the previous pop")
+                    continue
+                repaired.append(
+                    f"shifted keyword_pop {seg['text']!r} to start at {prev_pop_end:.1f}")
+                seg["start"] = round(prev_pop_end, 3)
+            prev_pop_end = seg["end"]
+            deoverlapped.append(seg)
+        segments = deoverlapped
+        pop_windows = [(s["start"], s["end"]) for s in segments if s["type"] == "keyword_pop"]
+        if pop_windows:
+            kept_pop: List[Dict[str, Any]] = []
+            for seg in segments:
+                if seg["type"] in ("keyword_pop", "zoom") or not any(
+                        _overlaps((seg["start"], seg["end"]), w) for w in pop_windows):
+                    kept_pop.append(seg)
+                    continue
+                overlapping = [w for w in pop_windows
+                               if _overlaps((seg["start"], seg["end"]), w)]
+                first_start = min(w[0] for w in overlapping)
+                last_end = max(w[1] for w in overlapping)
+                if first_start - seg["start"] >= 0.5:
+                    repaired.append(
+                        f"trimmed segment ({seg['type']}) to end before a "
+                        f"keyword_pop [{seg['start']:.1f}, {first_start:.1f}]")
+                    seg["end"] = round(first_start, 3)
+                    kept_pop.append(seg)
+                elif seg["end"] - last_end >= 0.5:
+                    repaired.append(
+                        f"trimmed segment ({seg['type']}) to start after a "
+                        f"keyword_pop [{last_end:.1f}, {seg['end']:.1f}]")
+                    seg["start"] = round(last_end, 3)
+                    kept_pop.append(seg)
+                else:
+                    repaired.append(
+                        f"dropped segment ({seg['type']}) overlapping "
+                        "keyword_pop windows with <0.5s trimmable on either side")
+            segments = kept_pop
+        if not segments:
+            return None, "plan has no usable segments after repair", {}
+        if not any(s["type"] == "keyword_pop" for s in segments):
+            return None, "keyword_punch plan has no keyword_pop segments", {}
+    elif not hook_card_present and not has_hook_title:
         return None, "plan has no hook title_card starting at 0.0", {}
 
     segments.sort(key=lambda s: s["start"])
@@ -467,16 +738,19 @@ def plan_with_ollama(
     hook_card_present_flag: bool = False,
     template_id: Optional[str] = None,
     style_preset: Optional[str] = None,
+    keyword_punch: bool = False,
 ) -> Tuple[Optional[Dict[str, Any]], Dict[str, Any]]:
     """Ask the local Ollama model for a motion plan.
 
     Returns (plan, info). plan is None on ANY failure (disabled, empty
     transcript, unreachable, timeout, bad JSON, validation failure) and
     info carries the fallback reason; the caller then uses the rules
-    planner. This function never raises.
-    """
+    planner. This function never raises. With keyword_punch (Batch 5)
+    the model plans keyword pops + restraint instead of the default
+    title/cards plan."""
     config = _ollama_config()
-    info: Dict[str, Any] = {"planner": "ollama", "model": config["model"]}
+    info: Dict[str, Any] = {"planner": "ollama", "model": config["model"],
+                            "keyword_punch": keyword_punch}
     try:
         if not config["enabled"]:
             info["fallback_reason"] = "ollama disabled via EDIONIC_OLLAMA_ENABLED"
@@ -494,6 +768,7 @@ def plan_with_ollama(
         system, user = _build_prompt(
             transcript, duration, title_text, hook_card_present_flag,
             template_id, style_preset, template_ids, style_ids,
+            keyword_punch=keyword_punch,
         )
         body = json.dumps({
             "model": config["model"],
@@ -503,6 +778,10 @@ def plan_with_ollama(
             ],
             "stream": False,
             "format": "json",
+            # Keyword-punch plans carry ~15-40 pop segments: raise the
+            # output cap so a long plan is never cut mid-JSON. Short
+            # plans stop at EOS as before.
+            "options": {"num_predict": 2048},
         }).encode("utf-8")
         request = urllib.request.Request(
             f"{config['url']}/api/chat", data=body, method="POST",
@@ -527,7 +806,8 @@ def plan_with_ollama(
             return None, info
 
         segments, error, meta = _validate_plan(
-            payload, duration, hook_card_present_flag, template_ids, style_ids)
+            payload, duration, hook_card_present_flag, template_ids, style_ids,
+            keyword_punch=keyword_punch, words=words)
         if segments is None:
             info["fallback_reason"] = f"invalid plan: {error}"
             return None, info

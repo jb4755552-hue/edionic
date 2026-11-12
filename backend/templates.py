@@ -343,6 +343,30 @@ TEMPLATE_CATALOG: List[Dict[str, Any]] = [
         "watermark": True,
         "cta_option": "Comment-gated CTA pill (optional, off by default).",
     },
+    {
+        "id": "devin_keyword_punch",
+        "name": "Devin Keyword Punch — No Captions, Big Keyword Pops",
+        "category": "Talking Head",
+        "feel": "Confrontational, punchy, proof-led — huge colour-coded keyword pops own the frame, voice only.",
+        "references": ["devinjatho (reel Da2x2TaSmUH — the keyword-punch reference; watched with sound)"],
+        "inputs": ["talking-head raw video"],
+        "caption_preset": "keyword_punch",
+        "secondary_caption_preset": None,
+        "style_preset": "creator_motion_graphics_style",
+        "palette": ["#FFFFFF", "#111111", "#22C55E", "#EF4444", "#3B82F6"],
+        "pacing": {"mode": "one_continuous_take", "cuts": "no cuts; pacing from keyword changes every 1-3s + punch-ins"},
+        "layout": "full_frame",
+        "sfx_map": [],
+        "sfx_defaults": [],
+        "music": "None. Voice only — no music bed, no SFX.",
+        "sound_verified": True,
+        "hook_rule": "No title card: the first keyword pop IS the hook, popping hard on the first spoken keyword within the first second.",
+        "title_text": "Devin keyword punch",
+        "silence_cuts": False,
+        "watermark": False,
+        "hook_block": False,
+        "cta_option": "None — the style ends on the voice, no CTA card.",
+    },
 ]
 
 
@@ -381,21 +405,27 @@ def apply_template_to_job(template_id: str, job: Dict[str, Any]) -> Dict[str, An
     if not filled.get("sfx"):
         filled["sfx"] = copy.deepcopy(template["sfx_defaults"])
     if not filled.get("storyboard"):
-        filled["storyboard"] = {
-            "title": template["name"],
-            "blocks": [
-                {
-                    "id": "b0",
-                    "title": "hook",
-                    "text": template["hook_rule"],
-                    "start": 0.0,
-                    "end": 3.0,
-                    "visual": template["layout"],
-                    "graphic": "Title card",
-                    "sfx": template["sfx_map"][0]["sound"] if template["sfx_map"] else "",
-                }
-            ],
-        }
+        if template.get("hook_block", True):
+            filled["storyboard"] = {
+                "title": template["name"],
+                "blocks": [
+                    {
+                        "id": "b0",
+                        "title": "hook",
+                        "text": template["hook_rule"],
+                        "start": 0.0,
+                        "end": 3.0,
+                        "visual": template["layout"],
+                        "graphic": "Title card",
+                        "sfx": template["sfx_map"][0]["sound"] if template["sfx_map"] else "",
+                    }
+                ],
+            }
+        else:
+            # Templates like devin_keyword_punch own the hook with their
+            # first planned graphic (the first keyword pop): no title
+            # card block, so nothing can double-draw at 0-3s.
+            filled["storyboard"] = {"title": template["name"], "blocks": []}
     filled["template_pacing"] = copy.deepcopy(template["pacing"])
     filled["template_layout"] = template["layout"]
     filled["template_music"] = template["music"]

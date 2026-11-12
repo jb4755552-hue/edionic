@@ -525,6 +525,22 @@ const STYLE_CARDS_CATALOG = [
         sfx: "thump"
       }
     ]
+  },
+  {
+    id: "tpl_devin_keyword_punch",
+    name: "Devin Keyword Punch",
+    kicker: "DEVIN JATHO STYLE",
+    headline: "PUNCH",
+    headlineColor: "#22C55E",
+    bgGradient: "linear-gradient(165deg, #052E16 0%, #111111 60%, #090D16 100%)",
+    category: ["all", "templates", "bold"],
+    caption_preset: "keyword_punch",
+    style_preset: "creator_motion_graphics_style",
+    tag: "Template · keyword_punch",
+    template_id: "devin_keyword_punch",
+    template_title_text: "Devin keyword punch",
+    sfx_defaults: [],
+    storyboard_hook: []
   }
 ];
 

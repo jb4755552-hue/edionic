@@ -23,7 +23,8 @@ keyword-matched): "Title card", "pill", "proof card", "lower-third",
 "progress bar", "shape", plus "keyword emphasis" for the kinetic pop,
 "card sequence" for numbered cards with a sweeping path line, and
 "zoom" for punch-in/out on the video itself (zoompan, anchored on the
-face zone). A job with no V2 clips and no template watermark renders exactly as
+face zone). Batch 5 adds "keyword pop": the huge colour-coded mid-frame
+keyword punch that REPLACES captions in the keyword_punch style. A job with no V2 clips and no template watermark renders exactly as
 before — build_render_graphics() returns has_graphics=False and the
 pipeline changes nothing.
 
@@ -150,6 +151,7 @@ _CLASSIFIERS: List[Tuple[Tuple[str, ...], str]] = [
     (("pill",), "pill"),
     (("proof",), "proof_card"),
     (("progress",), "progress_bar"),
+    (("keyword pop", "keyword_pop"), "keyword_pop"),
     (("emphasis", "keyword"), "emphasis"),
     (("shape", "badge", "callout"), "shape"),
 ]
@@ -164,6 +166,7 @@ GFX_STYLES = [
     "Style: GfxLower,Arial,70,&H00FFFFFF,&H00FFFFFF,&H00101010,&H80000000,-1,0,0,0,100,100,1,0,1,4,2,7,60,60,0,1",
     "Style: GfxLowerSub,Arial,44,&H00D8DEE9,&H00D8DEE9,&H00101010,&H80000000,0,0,0,0,100,100,1,0,1,3,0,7,60,60,0,1",
     "Style: GfxEmphasis,Impact,108,&H00FFFFFF,&H00FFFFFF,&H00101010,&H80000000,-1,0,0,0,100,100,2,0,1,5,3,5,60,60,0,1",
+    "Style: GfxKeyword,Impact,130,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,88,112,1,0,1,0,4,5,60,60,0,1",
     "Style: GfxShape,Arial,100,&H00FFFFFF,&H00FFFFFF,&H00FFFFFF,&H00000000,0,0,0,0,100,100,0,0,1,0,0,7,0,0,0,1",
     "Style: GfxWatermark,Arial,36,&H80FFFFFF,&H80FFFFFF,&H80000000,&H00000000,-1,0,0,0,100,100,1,0,1,2,0,1,60,60,40,1",
     "Style: GfxCardNum,Arial,84,&H00FFFFFF,&H00FFFFFF,&H00101010,&H80000000,-1,0,0,0,100,100,1,0,1,4,2,8,60,60,0,1",
@@ -172,6 +175,24 @@ GFX_STYLES = [
 
 # Graphics draw above captions (captions use layers 0-3).
 GFX_LAYER = 5
+
+# Keyword-pop colours (Batch 5, Devin Jatho keyword-punch style):
+# white = neutral, bright red = "bad"/old phrases, bright green =
+# "good"/new power words, bright blue = the key term. Same hex values as
+# the talking_head_pro template palette.
+KEYWORD_ROLE_COLORS = {
+    "neutral": "#FFFFFF",
+    "bad": "#EF4444",
+    "good": "#22C55E",
+    "key": "#3B82F6",
+}
+# Keyword pops are centred mid-frame at chest height: y 1130 keeps even
+# a 2-line pop below the chin (y 977) and above the caption zone, which
+# is empty in this style (pops replace captions). Max width ~80% of the
+# 1080 frame; base font 130 (Impact condensed via ScaleX 88 / ScaleY 112).
+KEYWORD_POP_POS = (540, 1130)
+KEYWORD_POP_MAX_W = 864
+KEYWORD_POP_FONT = 130
 
 
 # ---------------------------------------------------------------------------
@@ -269,24 +290,34 @@ def _est_text_w(text: str, fontsize: int) -> float:
 
 
 def _fit_text(text: str, fontsize: int, max_w: float, max_lines: int = 2,
-              min_fs: int = 26) -> Tuple[List[str], int]:
+              min_fs: int = 26, em_scale: float = 1.0) -> Tuple[List[str], int]:
     """Greedy word-wrap `text` to lines no wider than max_w, shrinking
     the font (down to min_fs) and truncating with an ellipsis as a last
     resort. Returns (lines, fontsize_used). Never returns more than
     max_lines lines, and no returned line exceeds max_w at the used size
     (by the _est_text_w estimate) — so ASS never auto-wraps a fitted
     line into an extra line that spills the box or hits the captions.
+
+    `em_scale` corrects the Arial-based estimate for narrower faces:
+    keyword pops use Impact condensed (0.72), whose caps advance ~28%
+    less than Arial's — without it every 2-3 word pop would shrink far
+    below the huge size the style needs. The 1.06 margin inside
+    _est_text_w plus the style's ScaleX < 100 keep the fit safe.
     """
     words = str(text or "").split()
     if not words:
         return [], fontsize
+
+    def _w(candidate: str, fs: int) -> float:
+        return _est_text_w(candidate, fs) * em_scale
+
     fs = fontsize
     while True:
         lines: List[str] = []
         cur = ""
         for w in words:
             cand = f"{cur} {w}".strip()
-            if _est_text_w(cand, fs) <= max_w or not cur:
+            if _w(cand, fs) <= max_w or not cur:
                 cur = cand
             else:
                 lines.append(cur)
@@ -297,7 +328,7 @@ def _fit_text(text: str, fontsize: int, max_w: float, max_lines: int = 2,
             # A single over-wide word can still exceed max_w: hard-truncate it.
             fixed = []
             for ln in lines:
-                while len(ln) > 1 and _est_text_w(ln, fs) > max_w:
+                while len(ln) > 1 and _w(ln, fs) > max_w:
                     ln = ln[:-2] + "…"
                 fixed.append(ln)
             return fixed, fs
@@ -311,7 +342,7 @@ def _fit_text(text: str, fontsize: int, max_w: float, max_lines: int = 2,
         tail = ""
         for w in tail_words:
             cand = f"{tail} {w}".strip()
-            if _est_text_w(cand + " …", fs) <= max_w:
+            if _w(cand + " …", fs) <= max_w:
                 tail = cand
             else:
                 break
@@ -639,6 +670,34 @@ def _emphasis(start: float, end: float, phrase: str, accent: str, scale: int):
     return events, []
 
 
+def _keyword_pop(start: float, end: float, text: str, role: str, scale: int):
+    """Batch 5 keyword punch: huge extra-bold condensed all-caps pop,
+    centred mid-frame at chest height, colour-coded by role. Hard
+    pop-in (14% overshoot settling in 120ms, no fade) and a hard vanish
+    at `end` — the reference style pops in ON the spoken keyword and is
+    gone 1-2s later. NO pill/box/outline: the only separation from the
+    video is a soft dark drop shadow (style Shadow + \\blur). Text is
+    measured-width fitted to ~80% of the frame on at most 2 lines, so a
+    3-word pop can never overflow the frame."""
+    shown = _clean_ass_text(text).upper()
+    if not shown:
+        return [], []
+    color = _hex_to_ass_color(
+        KEYWORD_ROLE_COLORS.get(str(role or "").strip().lower(), "#FFFFFF"))
+    lines, used_fs = _fit_text(shown, KEYWORD_POP_FONT, KEYWORD_POP_MAX_W,
+                               max_lines=2, min_fs=72, em_scale=0.72)
+    if not lines:
+        return [], []
+    pop_fs = max(used_fs + 8, int(round(used_fs * 1.14)))
+    events = [_dialogue(
+        start, end, "GfxKeyword",
+        "{\\pos(%d,%d)\\fs%d\\t(0,120,\\fs%d)\\blur4\\1c%s\\3c&H000000&}"
+        % (KEYWORD_POP_POS[0], KEYWORD_POP_POS[1], pop_fs, used_fs, color)
+        + "\\N".join(lines),
+    )]
+    return events, []
+
+
 def _watermark(start: float, end: float, text: str):
     shown = _clean_ass_text(text)
     if not shown:
@@ -767,6 +826,12 @@ def build_render_graphics(
         elif element == "emphasis":
             phrase = " ".join(block_text.split()[:3]) or _meaningful_title(clip.get("title"))
             events, frags = _emphasis(start, end, phrase, accent, scale)
+        elif element == "keyword_pop":
+            phrase = _meaningful_title(clip.get("title") or block.get("title")) or block_text
+            if not phrase:
+                continue
+            events, frags = _keyword_pop(
+                start, end, phrase, clip.get("color_role", "neutral"), scale)
         elif element == "card_sequence":
             cards = clip.get("cards")
             if not isinstance(cards, list) or not cards:

@@ -13,7 +13,7 @@ import json
 import os
 import subprocess
 import tempfile
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
 
 
 def find_binary(name: str) -> str:
@@ -29,10 +29,14 @@ def find_binary(name: str) -> str:
     return name
 
 
-def _measure_real_1080x1920_frame(raw_rgb: bytes, width: int = 1080, height: int = 1920) -> Dict[str, Any]:
+def _measure_real_1080x1920_frame(raw_rgb: bytes, width: int = 1080, height: int = 1920,
+                                cap_band: Tuple[int, int] = (1280, 1650)) -> Dict[str, Any]:
     """
     Scan a real 1080x1920 (or 2160x3840 4K scaled) RGB24 frame to measure:
-    1. Caption pixel height in the lower caption zone + visual RGB hash of the caption region
+    1. Caption pixel height in the text zone (`cap_band`, default the lower
+       caption zone; Batch 5 passes the mid-frame pop band for
+       keyword_punch, whose text lives at chest height, not below) +
+       visual RGB hash of the zone
     2. Speaker head top (headroom %), eyes position (upper third %), and chin position
     3. Left/right text clipping check (`clipped_text`)
     """
@@ -53,8 +57,8 @@ def _measure_real_1080x1920_frame(raw_rgb: bytes, width: int = 1080, height: int
     sx = width / 1080.0
     sy = height / 1920.0
 
-    y_cap_0 = int(round(1280 * sy))
-    y_cap_1 = int(round(1650 * sy))
+    y_cap_0 = int(round(cap_band[0] * sy))
+    y_cap_1 = int(round(cap_band[1] * sy))
 
     # Compute SHA-256 fingerprint of the caption visual band to prove distinct preset rendering
     cap_band_start = y_cap_0 * width * 3
@@ -222,8 +226,20 @@ def run_slop_gate_qa(
 
     words = (render_info or {}).get("transcription_words", [])
     preset_name = (render_info or {}).get("caption_preset", "glow")
+    # Batch 5: keyword_punch has no lower-zone captions — its text is the
+    # mid-frame keyword pops. Rule 1 samples mid-pop in the pop band and
+    # requires planned pops instead of a word count; the SFX check drops
+    # its SFX-placed requirement (voice-only is correct for this style).
+    keyword_punch_mode = preset_name == "keyword_punch"
+    pop_windows = [
+        (float(s.get("start", 0.0)), float(s.get("end", 0.0)))
+        for s in ((render_info or {}).get("motion_plan", {}) or {}).get("segments", [])
+        if isinstance(s, dict) and s.get("type") == "keyword_pop"
+    ]
     caption_sample_t = 0.65
-    if preset_name == "light_sweep_title":
+    if keyword_punch_mode and pop_windows:
+        caption_sample_t = round(0.5 * (pop_windows[0][0] + pop_windows[0][1]), 2)
+    elif preset_name == "light_sweep_title":
         caption_sample_t = 1.05
     elif words:
         w0 = words[min(1, len(words) - 1)]
@@ -256,7 +272,11 @@ def run_slop_gate_qa(
         r_full = subprocess.run(f_full_cmd, capture_output=True)
         if r_full.returncode == 0 and os.path.isfile(full_raw_path):
             with open(full_raw_path, "rb") as fh:
-                frame_metrics = _measure_real_1080x1920_frame(fh.read(), width, height)
+                # Pop band y 850-1300: pops centre on y 1130 and span up
+                # to ~2 lines; the lower caption zone is empty here.
+                cap_band = (850, 1300) if keyword_punch_mode else (1280, 1650)
+                frame_metrics = _measure_real_1080x1920_frame(
+                    fh.read(), width, height, cap_band=cap_band)
 
         sample_times = [0.35, min(2.0, max(0.5, duration / 2.0)), max(0.5, duration - 0.45)]
         raw_frames: List[bytes] = []
@@ -300,17 +320,22 @@ def run_slop_gate_qa(
     i_lufs = sfx_qa.get("integrated_lufs")
     tp_db = sfx_qa.get("true_peak_db")
     sfx_placed = sfx_qa.get("effects_placed", [])
-    lufs_ok = (i_lufs is not None) and (-15.0 <= float(i_lufs) <= -13.0) and len(sfx_placed) > 0
+    if keyword_punch_mode:
+        # Voice-only style: zero SFX is correct — loudness alone gates.
+        lufs_ok = (i_lufs is not None) and (-15.0 <= float(i_lufs) <= -13.0)
+    else:
+        lufs_ok = (i_lufs is not None) and (-15.0 <= float(i_lufs) <= -13.0) and len(sfx_placed) > 0
     min_cap_px = 108 if height >= 3840 else 54
 
     checks = [
         {
             "id": "qa_rule_1_captions_and_lipsync",
             "name": f"QA Rule 1: Frame-Level Caption Size (>= {min_cap_px} px) & Preset '{preset_name}'",
-            "pass": cap_px >= min_cap_px and word_count >= 4,
+            "pass": cap_px >= min_cap_px and (len(pop_windows) > 0 if keyword_punch_mode else word_count >= 4),
             "measured": (
                 f"Preset '{preset_name}': glyph height = {cap_px} px (block = {frame_metrics['caption_total_block_px']} px, "
                 f"hash={frame_metrics['caption_zone_sha256']}) @ t={caption_sample_t}s"
+                + (f" ({len(pop_windows)} keyword pops planned, pop band y 850-1300)" if keyword_punch_mode else "")
             )
         },
         {
@@ -332,6 +357,7 @@ def run_slop_gate_qa(
             "measured": (
                 f"Integrated = {i_lufs} LUFS (target -14.0 ±1.0), True Peak = {tp_db} dBTP | "
                 f"{len(sfx_placed)} SFX placed on exact cut frames @ -12.0 dB gain"
+                + (" (voice-only style: no SFX expected)" if keyword_punch_mode else "")
             )
         }
     ]

@@ -539,6 +539,12 @@ def render_edl_to_video(
     title_text = edl_data.get("title_text") or "EDIONIC 9:16 HOOK TITLE"
     style_preset_id = edl_data.get("style_preset") or "smoke2_style"
 
+    # Batch 5: the keyword_punch preset IS the Devin Jatho style — keyword
+    # pops replace captions, and the style is voice-only (no music, no
+    # SFX). The preset is the single switch: it survives template merges
+    # and persisted-EDL leftovers (e.g. a saved music_bed or sfx list).
+    keyword_punch_mode = preset_name == "keyword_punch"
+
     # Respect locked tracks & user overrides (Phase 5)
     locked_tracks = set((edl_data.get("overrides") or {}).get("locked_tracks") or [])
     for trk in (edl_data.get("tracks") or []):
@@ -550,7 +556,13 @@ def render_edl_to_video(
     # silently discard user SFX choices.
     raw_sfx = edl_data.get("sfx") or []
     valid_raw_sfx = [s for s in raw_sfx if float(s.get("placed_at_s", 0.0)) <= edited_dur - 0.15]
-    sfx_placements = valid_raw_sfx if valid_raw_sfx else build_default_cut_sfx_placements(cut_plan, edited_dur)
+    if keyword_punch_mode:
+        # Voice only: no SFX at all, even if the job carries placements
+        # (a persisted EDL or another template's defaults must not leak
+        # sound into this style).
+        sfx_placements = []
+    else:
+        sfx_placements = valid_raw_sfx if valid_raw_sfx else build_default_cut_sfx_placements(cut_plan, edited_dur)
     edl_data["sfx"] = sfx_placements
     edl_data["caption_preset"] = preset_name
     edl_data["title_text"] = title_text
@@ -631,6 +643,7 @@ def render_edl_to_video(
                     hook_card_present_flag=hook_flag,
                     template_id=edl_data.get("template_id"),
                     style_preset=edl_data.get("style_preset"),
+                    keyword_punch=keyword_punch_mode,
                 )
             except Exception as exc:
                 plan, planner_info = None, {"fallback_reason": f"ollama planner error: {exc}"}
@@ -644,6 +657,7 @@ def render_edl_to_video(
                 edited_dur,
                 title_text=title_text,
                 hook_card_present_flag=hook_flag,
+                keyword_punch=keyword_punch_mode,
             )
             planner_info = {
                 "planner": "rules",
@@ -659,6 +673,7 @@ def render_edl_to_video(
             if planner_info.get("planner") == "ollama" else "transcript rules",
             "planner": planner_info.get("planner", "rules"),
             "model": planner_info.get("model"),
+            "keyword_punch": keyword_punch_mode,
             "stripped_placeholders": stripped,
         }
         if planner_info.get("fallback_reason"):
@@ -725,9 +740,10 @@ def render_edl_to_video(
             capture_output=True
         )
 
-        # Optional Phase 6 music bed ducked at -22 dB under voice before SFX & -14 LUFS normalization
+        # Optional Phase 6 music bed ducked at -22 dB under voice before SFX & -14 LUFS normalization.
+        # Batch 5: never under the keyword_punch preset — that style is voice only.
         music_bed_id = edl_data.get("music_bed")
-        if music_bed_id:
+        if music_bed_id and not keyword_punch_mode:
             m_cat = ensure_music_library()
             bed_obj = next((b for b in m_cat.get("beds", []) if b["id"] == music_bed_id), None)
             if bed_obj and os.path.isfile(bed_obj["path"]):

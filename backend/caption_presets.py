@@ -1,6 +1,6 @@
 """
-Edionic Caption / Text Preset Library — caption_presets.py (Section 5.3 — All 12 Presets)
-Implements all 12 verified presets on 1080x1920 vertical canvas with >= 54 px glyph height:
+Edionic Caption / Text Preset Library — caption_presets.py (Section 5.3 — All 13 Presets)
+Implements all 13 verified presets on 1080x1920 vertical canvas with >= 54 px glyph height:
 1. glow (default)
 2. gradient_steps (steps colors word-by-word; honest limit: ASS has no true smooth gradient)
 3. extrude_3d (heavy 3D block shadow + outline)
@@ -14,11 +14,15 @@ Implements all 12 verified presets on 1080x1920 vertical canvas with >= 54 px gl
 10. minimal_clean (crisp thin-outline modern lower-third with accent highlight)
 11. light_sweep_title (title card: glowing serif title with a translucent highlight bar sweeping across it — rendered as a title clip)
 12. serif_title (title card: white serif caps title + smaller serif body line beneath, centred — archival/documentary)
+13. keyword_punch (Batch 5: NO caption events at all — the motion planner's
+    keyword_pop segments render as huge mid-frame keyword pops via the
+    graphics engine, replacing captions entirely; this preset writes a
+    header-only ASS so no karaoke/two-tier text can double up)
 """
 
 from typing import List, Dict, Any
 
-# NOTE: constant name kept for compatibility; the list now holds 12 presets.
+# NOTE: constant name kept for compatibility; the list now holds 13 presets.
 ALL_11_PRESETS = [
     "glow",
     "gradient_steps",
@@ -32,6 +36,7 @@ ALL_11_PRESETS = [
     "minimal_clean",
     "light_sweep_title",
     "serif_title",
+    "keyword_punch",
 ]
 
 PRESET_CATALOG_INFO: Dict[str, Dict[str, Any]] = {
@@ -108,6 +113,12 @@ PRESET_CATALOG_INFO: Dict[str, Dict[str, Any]] = {
         "label": "Serif Title",
         "type": "ass_word_highlight",
         "description": "Title card: large white serif caps word + smaller serif phrase line beneath, centred (archival/documentary)."
+    },
+    "keyword_punch": {
+        "name": "keyword_punch",
+        "label": "Keyword Punch",
+        "type": "keyword_pops",
+        "description": "No conventional captions: huge extra-bold condensed all-caps keyword pops, centred mid-frame, colour-coded (white neutral / red bad-old / green good-new / blue key term), popping hard on the spoken keyword for 1-2s. Pops are planned from the transcript and rendered by the graphics engine; this preset emits zero caption events."
     }
 }
 
@@ -240,6 +251,26 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
 
     events: List[str] = []
+
+    # Batch 5: keyword_punch replaces captions entirely. The motion planner
+    # picks 1-3 word keywords (with start/end + colour role) and the
+    # graphics engine renders them as mid-frame keyword_pop elements. This
+    # preset writes a header-only ASS with ZERO caption events, so no
+    # karaoke/two-tier text can ever double up with a pop. The [V4+ Styles]
+    # / [Events] sections are still written: merge_graphics_into_ass()
+    # requires them to append the pop events.
+    if preset == "keyword_punch":
+        full_ass = ass_header + "\n"
+        with open(output_ass_path, "w", encoding="utf-8") as f:
+            f.write(full_ass)
+        return {
+            "ass_path": output_ass_path,
+            "preset": preset,
+            "preset_meta": PRESET_CATALOG_INFO.get(preset, {}),
+            "title_text": "",
+            "word_count": len(words),
+            "event_count": 0,
+        }
 
     # If preset is `light_sweep_title`, add the glowing serif title card event across 0.0s..2.5s
     if preset == "light_sweep_title":
