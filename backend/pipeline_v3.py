@@ -51,7 +51,14 @@ from motion_planner import (
     inject_plan_into_edl,
     job_has_manual_graphics,
     hook_card_present,
+    strip_generated_graphics,
 )
+try:
+    # Ollama LLM planner (Batch 4). A broken/absent module must never break
+    # the pipeline: fall back to the rules planner below.
+    from ollama_planner import plan_with_ollama
+except Exception:
+    plan_with_ollama = None  # type: ignore[assignment]
 from contact_sheet_qa import run_contact_sheet_qa
 from openfilm import (
     apply_overrides_and_locks,
@@ -592,26 +599,74 @@ def render_edl_to_video(
         elif tid == "CC":
             track["clips"] = remapped_words
 
-    # Batch 3 extension: motion design plan. When the job carries no manual
-    # storyboard/template graphics (a lone auto hook title card does not
-    # count), plan graphics from the transcript — timed card sequences,
-    # emphasis cards/pills, hook title, zooms — and inject them as V2 clips
-    # so the graphics layer below renders them. A locked V2 track means
-    # the user owns overlays: never auto-plan into it. The plan is returned
-    # in the render info (motion_plan) so it stays visible.
+    # Batch 3 extension + Batch 4: motion design plan. When the job
+    # carries no manual storyboard/template graphics (a lone auto hook
+    # title card, factory placeholders, and previous planner output do
+    # not count), plan graphics from the transcript — timed card
+    # sequences, emphasis cards/pills, hook title, zooms — and inject
+    # them as V2 clips so the graphics layer below renders them. A locked
+    # V2 track means the user owns overlays: never auto-plan into it.
+    # The plan is returned in the render info (motion_plan) so it stays
+    # visible, including WHICH planner ran (Ollama model vs rules).
+    # Batch 4: stale planner output / factory placeholders are stripped
+    # before planning so they never render alongside the fresh plan, and
+    # the local Ollama model is tried first (transcript -> model ->
+    # validated plan JSON); the rules planner is the fallback when the
+    # model is down, slow, or returns an invalid plan. Renders never fail
+    # because the model is unavailable.
     motion_plan: Dict[str, Any] = {"planned": False, "reason": "manual graphics present"}
     if "V2" in locked_tracks:
         motion_plan = {"planned": False, "reason": "V2 track locked"}
     elif not job_has_manual_graphics(edl_data):
-        plan = plan_motion_graphics(
-            remapped_words,
-            edited_dur,
-            title_text=title_text,
-            hook_card_present_flag=hook_card_present(edl_data),
-        )
+        stripped = strip_generated_graphics(edl_data)
+        hook_flag = hook_card_present(edl_data)
+        plan = None
+        planner_info: Dict[str, Any] = {}
+        if plan_with_ollama is not None and remapped_words:
+            try:
+                plan, planner_info = plan_with_ollama(
+                    remapped_words,
+                    edited_dur,
+                    title_text=title_text,
+                    hook_card_present_flag=hook_flag,
+                    template_id=edl_data.get("template_id"),
+                    style_preset=edl_data.get("style_preset"),
+                )
+            except Exception as exc:
+                plan, planner_info = None, {"fallback_reason": f"ollama planner error: {exc}"}
+        if plan is None:
+            if not planner_info.get("fallback_reason"):
+                planner_info["fallback_reason"] = (
+                    "ollama planner unavailable" if plan_with_ollama is None else "empty transcript"
+                )
+            plan = plan_motion_graphics(
+                remapped_words,
+                edited_dur,
+                title_text=title_text,
+                hook_card_present_flag=hook_flag,
+            )
+            planner_info = {
+                "planner": "rules",
+                "model": None,
+                "fallback_reason": planner_info["fallback_reason"],
+            }
         if plan["clips"]:
             inject_plan_into_edl(edl_data, plan)
-        motion_plan = {"planned": True, "segments": plan["segments"], "source": "transcript rules"}
+        motion_plan = {
+            "planned": True,
+            "segments": plan["segments"],
+            "source": ("ollama " + str(planner_info.get("model")))
+            if planner_info.get("planner") == "ollama" else "transcript rules",
+            "planner": planner_info.get("planner", "rules"),
+            "model": planner_info.get("model"),
+            "stripped_placeholders": stripped,
+        }
+        if planner_info.get("fallback_reason"):
+            motion_plan["fallback_reason"] = planner_info["fallback_reason"]
+        if planner_info.get("suggested_template_id"):
+            motion_plan["suggested_template_id"] = planner_info["suggested_template_id"]
+        if planner_info.get("suggested_style_preset"):
+            motion_plan["suggested_style_preset"] = planner_info["suggested_style_preset"]
 
     # Always generate ASS captions on the 1080x1920 coordinate grid; FFmpeg's libass automatically
     # scales PlayResX:1080 / PlayResY:1920 proportionally onto 2160x3840 4K frames!

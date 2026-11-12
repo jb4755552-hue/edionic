@@ -212,11 +212,40 @@ def hook_card_present(edl_data: Dict[str, Any]) -> bool:
     return False
 
 
+def _is_generated_clip(clip: Dict[str, Any], blocks: Dict[str, Dict[str, Any]]) -> bool:
+    """True when a V2 clip is planner output or a factory placeholder:
+    plan-generated ids (v2_plan_*), clips whose storyboard block is a
+    factory default, or orphan v2_b<N> clips with placeholder titles.
+    Generated clips never count as manual graphics."""
+    from graphics import is_factory_default_block, is_plan_generated_id
+    if is_plan_generated_id(clip.get("id")):
+        return True
+    block = blocks.get(str(clip.get("block_id", "")))
+    if block is not None:
+        return is_factory_default_block(block)
+    clip_id = str(clip.get("id") or "")
+    if re.match(r"^v2_b\d+$", clip_id, re.IGNORECASE):
+        title = str(clip.get("title") or "").strip().lower()
+        if title in ("", "b0", "b1", "hook beat", "core value") or re.match(r"^b\d+$", title):
+            return True
+    return False
+
+
 def job_has_manual_graphics(edl_data: Dict[str, Any]) -> bool:
     """True when the job carries authored graphics the planner must not
-    touch: V2 graphic clips (other than the auto hook card) or storyboard
-    blocks with real graphic values (other than the auto hook block)."""
-    from graphics import classify_graphic
+    touch: V2 graphic clips (other than the auto hook card, factory
+    placeholders, and previous planner output) or storyboard blocks with
+    real graphic values (other than the auto hook block, factory
+    placeholders, and previous planner output).
+
+    Factory-default b0/b1 blocks used to make this return True on EVERY
+    default-UI render, which silently disabled the planner (Batch 4 fix).
+    Plan-generated clips/blocks are likewise ignored: the worker saves
+    the mutated EDL after each render, so without this exemption the
+    second render on a new video would see stale plan clips as "manual"
+    and skip planning with stale timings.
+    """
+    from graphics import classify_graphic, is_factory_default_block, is_plan_generated_id
     blocks = _blocks_by_id(edl_data)
     for track in edl_data.get("tracks") or []:
         if track.get("id") != "V2":
@@ -228,14 +257,57 @@ def job_has_manual_graphics(edl_data: Dict[str, Any]) -> bool:
                 continue
             if _is_auto_hook_card(clip, blocks):
                 continue
+            if _is_generated_clip(clip, blocks):
+                continue
             return True
-    for block in blocks.values():
+    for block_id, block in blocks.items():
         graphic = block.get("graphic")
         if graphic and classify_graphic(graphic):
             if str(block.get("title", "")).strip().lower() == "hook":
                 continue
+            if is_plan_generated_id(block_id) or is_factory_default_block(block):
+                continue
             return True
     return False
+
+
+def strip_generated_graphics(edl_data: Dict[str, Any]) -> int:
+    """Remove planner output and factory placeholders from the job, in
+    place: V2 clips that are plan-generated or factory-default, and
+    storyboard blocks with plan_b* ids or factory-default content.
+
+    Call ONLY on the planning path (after job_has_manual_graphics()
+    returns False), so authored graphics are never touched. Without this,
+    stale placeholder/plan graphics would render alongside the fresh
+    plan, and stale plan timings would survive into the next render's
+    saved EDL.
+    """
+    from graphics import is_factory_default_block, is_plan_generated_id
+    removed = 0
+    blocks = _blocks_by_id(edl_data)
+    for track in edl_data.get("tracks") or []:
+        if track.get("id") != "V2":
+            continue
+        kept = []
+        for clip in track.get("clips") or []:
+            if isinstance(clip, dict) and "graphic" in clip and not clip.get("source") \
+                    and _is_generated_clip(clip, blocks):
+                removed += 1
+                continue
+            kept.append(clip)
+        track["clips"] = kept
+    storyboard = edl_data.get("storyboard")
+    if isinstance(storyboard, dict) and isinstance(storyboard.get("blocks"), list):
+        kept_blocks = []
+        for block in storyboard["blocks"]:
+            if isinstance(block, dict) and (
+                is_plan_generated_id(block.get("id")) or is_factory_default_block(block)
+            ):
+                removed += 1
+                continue
+            kept_blocks.append(block)
+        storyboard["blocks"] = kept_blocks
+    return removed
 
 
 def plan_motion_graphics(
@@ -361,6 +433,106 @@ def plan_motion_graphics(
 
     segments.sort(key=lambda s: s["start"])
     return {"segments": segments, "blocks": blocks, "clips": clips}
+
+
+# Graphic names the graphics engine classifies (see graphics.py).
+_SEGMENT_GRAPHICS = {
+    "title_card": "Title card",
+    "pill": "pill",
+    "proof_card": "proof card",
+    "lower_third": "lower-third",
+    "progress_bar": "progress bar",
+    "shape": "shape",
+    "emphasis": "keyword emphasis",
+    "card_sequence": "card sequence",
+    "zoom": "zoom",
+}
+
+
+def segments_to_plan(segments: List[Dict[str, Any]], duration: float) -> Dict[str, Any]:
+    """Convert validated plan segments into the EDL shapes the graphics
+    engine renders: storyboard blocks + V2 clips with plan_b*/v2_plan_*
+    ids, exactly the shape plan_motion_graphics() produces. The Ollama
+    planner feeds validated model output through here so both planners
+    share one injection path (and the strip/fallback handling).
+
+    Segments must already be validated (types, times, card payloads).
+    Out-of-range or empty segments are skipped defensively; callers that
+    need strict all-or-nothing validation must validate BEFORE calling.
+    """
+    duration = max(0.0, float(duration or 0.0))
+    blocks: List[Dict[str, Any]] = []
+    clips: List[Dict[str, Any]] = []
+    visible: List[Dict[str, Any]] = []
+
+    for seg in segments or []:
+        if not isinstance(seg, dict):
+            continue
+        seg_type = str(seg.get("type") or "")
+        graphic = _SEGMENT_GRAPHICS.get(seg_type)
+        if not graphic:
+            continue
+        start = max(0.0, float(seg.get("start", 0.0) or 0.0))
+        end = min(duration, float(seg.get("end", 0.0) or 0.0))
+        if end - start < 0.2 or start >= duration:
+            continue
+        if seg_type == "zoom":
+            idx = len(clips)
+            amount = max(0.05, min(0.15, float(seg.get("amount", 0.10) or 0.10)))
+            clips.append({
+                "id": f"v2_plan_zoom_{idx}",
+                "graphic": "zoom",
+                "amount": amount,
+                "in": 0.0,
+                "out": round(end - start, 3),
+                "at": round(start, 3),
+                "duration": round(end - start, 3),
+            })
+            visible.append({
+                "type": "zoom", "start": round(start, 3), "end": round(end, 3),
+                "text": f"punch-in {int(amount * 100)}%", "graphic": "zoom",
+            })
+            continue
+        text = str(seg.get("text") or "").strip()
+        if seg_type == "card_sequence":
+            cards = seg.get("cards") or []
+            title = f"{len(cards)} steps"
+            block_text = " ".join(str(c.get("label", "")).strip() for c in cards if isinstance(c, dict))
+        else:
+            title = text
+            block_text = text
+        idx = len(blocks)
+        block = {
+            "id": f"plan_b{idx}",
+            "title": title,
+            "text": block_text,
+            "start": round(start, 3),
+            "end": round(end, 3),
+            "visual": "",
+            "graphic": graphic,
+            "sfx": "",
+        }
+        clip = {
+            "id": f"v2_plan_{idx}",
+            "block_id": block["id"],
+            "title": title,
+            "graphic": graphic,
+            "in": 0.0,
+            "out": round(end - start, 3),
+            "at": round(start, 3),
+            "duration": round(end - start, 3),
+        }
+        if seg_type == "card_sequence":
+            clip["cards"] = seg["cards"]
+        blocks.append(block)
+        clips.append(clip)
+        visible.append({
+            "type": seg_type, "start": round(start, 3), "end": round(end, 3),
+            "text": title or text, "graphic": graphic,
+        })
+
+    visible.sort(key=lambda s: s["start"])
+    return {"segments": visible, "blocks": blocks, "clips": clips}
 
 
 def inject_plan_into_edl(edl_data: Dict[str, Any], plan: Dict[str, Any]) -> None:

@@ -48,8 +48,12 @@ import re
 from typing import Dict, Any, List, Tuple
 
 # ---------------------------------------------------------------------------
-# Layout — all coordinates on the 1080x1920 grid. The caption zone (roughly
-# y 1380-1580, bottom-aligned captions with MarginV ~340) is kept clear.
+# Layout — all coordinates on the 1080x1920 grid. Face-anchored framing
+# puts the eyes at 32.5% (y 624) and the chin unclipped at 50.9% (y 977),
+# and the two-tier caption keyword slot starts at y 1240 — so ALL mid-frame
+# graphics (cards, proof cards, pills, lower-thirds, emphasis) live in the
+# band y 995-1230: below the face, above the caption tiers. Nothing drawn
+# here may cover the speaker's face or collide with captions.
 # ---------------------------------------------------------------------------
 
 CANVAS_W = 1080
@@ -57,17 +61,17 @@ CANVAS_H = 1920
 
 TITLE_BAND = {"x": 60, "y": 300, "w": 960, "h": 250}
 TITLE_UNDERLINE_H = 8
-PILL_Y = 600
+PILL_Y = 1080
 PILL_H = 100
-PROOF_CARD = {"x": 100, "y": 1060, "w": 880, "h": 280}
-LOWER_BAND = {"x": 60, "y": 1150, "w": 660, "h": 180}
+PROOF_CARD = {"x": 100, "y": 1010, "w": 880, "h": 220}
+LOWER_BAND = {"x": 60, "y": 1010, "w": 660, "h": 180}
 PROGRESS_BAR = {"x": 60, "y": 88, "w": 960, "h": 16}
 SHAPE_CENTER = (890, 200)
 SHAPE_RADIUS = 70
-EMPHASIS_POS = (540, 1050)
+EMPHASIS_POS = (540, 1115)
 WATERMARK_POS = (70, 1850)
-CARDS_ROW = {"x": 60, "y": 720, "w": 960, "h": 260}
-CARDS_LINE_Y = 690
+CARDS_ROW = {"x": 60, "y": 1010, "w": 960, "h": 220}
+CARDS_LINE_Y = 995
 CARDS_LINE_H = 6
 CARDS_GAP = 20
 ZOOM_ANCHOR = (540, 640)  # face zone: eyes upper-third after face-anchored crop
@@ -82,9 +86,59 @@ DEFAULT_ACCENT = "#3B63FF"
 DEFAULT_PALETTE = ["#FFFFFF", "#111111", DEFAULT_ACCENT, "#22C55E", "#FACC15"]
 
 # Placeholder block titles that carry no display text of their own.
-_NON_TITLES = {"", "b0", "beat 1", "hook", "beat", "title", "untitled"}
+_NON_TITLES = {"", "b0", "b1", "beat 1", "hook", "beat", "title", "untitled"}
 
 _HEX_RE = re.compile(r"^#([0-9a-fA-F]{6})$")
+_PLACEHOLDER_ID_RE = re.compile(r"^b\d+$", re.IGNORECASE)
+
+# Factory-default storyboard blocks: the hardcoded placeholders the old
+# frontend default and normalize_storyboard used to inject ("b0"/"b1" with
+# stock titles/texts). They carry no user-authored content and must NEVER
+# render as on-screen graphics or block the motion planner. The template
+# hook block (id "b0", title "hook") is NOT factory-default — it is a real
+# template element and keeps rendering.
+_FACTORY_TITLES = {"hook beat", "core value"}
+_FACTORY_TEXTS = {
+    "welcome to edionic vertical video editor.",
+    "ai cuts silence and builds glowing captions.",
+    "hook line",
+    "main talking point with word-level captions",
+}
+
+
+def _is_placeholder_title(title: str) -> bool:
+    """True for titles that are block ids or stock labels, never real text."""
+    lowered = str(title or "").strip().lower()
+    return lowered in _NON_TITLES or bool(_PLACEHOLDER_ID_RE.match(lowered))
+
+
+def is_factory_default_block(block: Dict[str, Any]) -> bool:
+    """True when a storyboard block is a factory placeholder (see above).
+
+    Requires the b<N> id shape AND a placeholder signature (title == id,
+    a stock title, or a stock text). Blocks titled "hook" are excluded:
+    that is the template hook card.
+    """
+    if not isinstance(block, dict):
+        return False
+    block_id = str(block.get("id") or "")
+    if not _PLACEHOLDER_ID_RE.match(block_id):
+        return False
+    title = str(block.get("title") or "").strip()
+    if title.lower() == "hook":
+        return False
+    if title.lower() == block_id.lower():
+        return True
+    if title.lower() in _FACTORY_TITLES:
+        return True
+    text = str(block.get("text") or "").strip().lower()
+    return text in _FACTORY_TEXTS
+
+
+def is_plan_generated_id(item_id: Any) -> bool:
+    """True for ids the motion planner injects (v2_plan_*, plan_b*)."""
+    value = str(item_id or "")
+    return value.startswith("v2_plan_") or value.startswith("plan_b")
 
 # Keyword match order matters: "lower pill highlight" must hit pill, and
 # "title" must not swallow "title card" checks done earlier. First match wins.
@@ -231,7 +285,7 @@ def classify_graphic(graphic_text: str) -> str:
 
 def _meaningful_title(title: str) -> str:
     title = str(title or "").strip()
-    if title.lower() in _NON_TITLES:
+    if _is_placeholder_title(title):
         return ""
     return title
 
@@ -243,7 +297,7 @@ def _display_title(clip: Dict[str, Any], block: Dict[str, Any], edl_data: Dict[s
     if title:
         return title
     job_title = str(edl_data.get("title_text") or "").strip()
-    if job_title and job_title.lower() not in _NON_TITLES:
+    if job_title and not _is_placeholder_title(job_title):
         return job_title
     words = str(block.get("text") or "").split()[:8]
     return " ".join(words)
@@ -300,15 +354,19 @@ def _proof_card(start: float, end: float, claim: str, label: str, accent: str, s
         _drawbox(card["x"], card["y"], card["w"], card["h"], accent,
                  start, end, thickness=str(6 * scale)),
     ]
+    claim_y = PROOF_CARD["y"] + 24
+    wrapped_claim = _wrap_two_lines(_clean_ass_text(claim).upper())
     events = [_dialogue(
         start, end, "GfxProof",
-        "{\\pos(540,1100)\\fscx90\\fscy90\\t(0,180,\\fscx100\\fscy100)\\fad(150,150)}"
-        + _wrap_two_lines(_clean_ass_text(claim).upper()),
+        "{\\pos(540,%d)\\fscx90\\fscy90\\t(0,180,\\fscx100\\fscy100)\\fad(150,150)}" % claim_y
+        + wrapped_claim,
     )]
-    if label:
+    # The label only fits when the claim stays on one line; a two-line
+    # claim would grow down into the label slot.
+    if label and "\\N" not in wrapped_claim:
         events.append(_dialogue(
             start, end, "GfxProofLabel",
-            "{\\pos(540,1245)\\fad(150,150)}" + _clean_ass_text(label),
+            "{\\pos(540,%d)\\fad(150,150)}" % (PROOF_CARD["y"] + 178) + _clean_ass_text(label),
         ))
     return events, vf
 
@@ -321,7 +379,8 @@ def _lower_third(start: float, end: float, name: str, role: str, accent: str, sc
                  start, end),
         _drawbox(band["x"], band["y"], 12 * scale, band["h"], accent, start, end),
     ]
-    line = "{\\move(-300,1175,100,1175,0,300)\\fad(150,150)}" + _clean_ass_text(name)
+    line = "{\\move(-300,%d,100,%d,0,300)\\fad(150,150)}" % (
+        LOWER_BAND["y"] + 25, LOWER_BAND["y"] + 25) + _clean_ass_text(name)
     if role:
         line += "\\N{\\fs44\\1c&HD8DEE9&}" + _clean_ass_text(role)
     events = [_dialogue(start, end, "GfxLower", line)]
@@ -404,13 +463,13 @@ def _card_sequence(start: float, end: float, cards: List[Dict[str, Any]], accent
         number = _clean_ass_text(card.get("number", str(i + 1)))
         events.append(_dialogue(
             start, end, "GfxCardNum",
-            "{\\pos(%d,748)\\fad(120,120)}" % cx_u + number,
+            "{\\pos(%d,%d)\\fad(120,120)}" % (cx_u, CARDS_ROW["y"] + 24) + number,
         ))
         label = _clean_ass_text(card.get("label", ""))
         if label:
             events.append(_dialogue(
                 start, end, "GfxCardLabel",
-                "{\\pos(%d,872)\\fad(120,120)}" % cx_u
+                "{\\pos(%d,%d)\\fad(120,120)}" % (cx_u, CARDS_ROW["y"] + 140)
                 + _wrap_two_lines(label, 12),
             ))
     return events, vf
@@ -558,6 +617,15 @@ def build_render_graphics(
             continue
 
         block = blocks_by_id.get(str(clip.get("block_id", "")), {})
+        # Factory-default placeholder blocks must never render: a stale
+        # b0/b1 (e.g. from an old saved project) drawing a "B1" pill over
+        # the speaker's face is impossible from here on. The template hook
+        # block (title "hook") is not factory-default and still renders.
+        if block and is_factory_default_block(block):
+            continue
+        if not block and re.match(r"^v2_b\d+$", str(clip.get("id") or ""), re.IGNORECASE) \
+                and _is_placeholder_title(clip.get("title")):
+            continue
         block_text = _block_text(block)
 
         if element == "title_card":

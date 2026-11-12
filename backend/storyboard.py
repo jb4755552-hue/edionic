@@ -17,35 +17,21 @@ REQUIRED_BLOCK_FIELDS = ("id", "title", "text", "start", "end", "visual", "graph
 
 
 def normalize_storyboard(storyboard_data: Optional[Dict[str, Any]], total_duration: float = 5.0) -> Dict[str, Any]:
-    """Validate and normalize a storyboard dictionary ensuring all required fields exist on every block."""
+    """Validate and normalize a storyboard dictionary ensuring all required fields exist on every block.
+
+    An empty/missing block list stays EMPTY (Batch 4 fix): the old code
+    regenerated two factory-default blocks (b0 "Hook Beat", b1 "Core
+    Value") whose graphics made the motion planner believe the job had
+    manual graphics, silently disabling planning on every default render.
+    Empty input means "no authored storyboard" — the planner plans from
+    the transcript instead.
+    """
     raw = storyboard_data or {}
     title = str(raw.get("title") or "Edionic 9:16 Storyboard Plan").strip()
     raw_blocks = raw.get("blocks") or []
 
     if not raw_blocks:
-        mid = round(min(1.5, total_duration * 0.3), 2)
-        raw_blocks = [
-            {
-                "id": "b0",
-                "title": "Hook Beat",
-                "text": "Welcome to Edionic vertical video editor.",
-                "start": 0.0,
-                "end": mid,
-                "visual": "Speaker close-up (9:16 face-anchored)",
-                "graphic": "Hook Title Banner",
-                "sfx": "riser"
-            },
-            {
-                "id": "b1",
-                "title": "Core Value",
-                "text": "AI cuts silence and builds glowing captions.",
-                "start": mid,
-                "end": round(total_duration, 2),
-                "visual": "Face-anchored 9:16 frame + B-roll cut",
-                "graphic": "Lower pill highlight",
-                "sfx": "whoosh"
-            }
-        ]
+        return {"title": title, "blocks": []}
 
     normalized_blocks: List[Dict[str, Any]] = []
     for idx, blk in enumerate(raw_blocks):

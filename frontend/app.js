@@ -26,28 +26,11 @@ const state = {
   ],
   storyboard: {
     title: "Test plan",
-    blocks: [
-      {
-        id: "b0",
-        title: "b0",
-        text: "Hook line",
-        start: 0.0,
-        end: 1.5,
-        visual: "Speaker close-up",
-        graphic: "Title card",
-        sfx: "riser"
-      },
-      {
-        id: "b1",
-        title: "b1",
-        text: "Main talking point with word-level captions",
-        start: 1.5,
-        end: 5.0,
-        visual: "Face-anchored 9:16 frame",
-        graphic: "Lower pill highlight",
-        sfx: "whoosh"
-      }
-    ]
+    // Empty by default (Batch 4): the old hardcoded b0/b1 placeholder
+    // blocks made the backend believe every job had manual graphics, so
+    // the motion planner never ran on the default flow. The planner now
+    // plans from the transcript; the user adds blocks only when authoring.
+    blocks: []
   },
   edl: null
 };
