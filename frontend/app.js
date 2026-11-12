@@ -16,6 +16,7 @@ const state = {
   title_text: "Edionic 9:16 Hook Title",
   style_preset: "smoke2_style",
   selected_style_card: "tour",
+  template_id: null,
   sfx: [
     { name: "whoosh", placed_at_s: 1.0 },
     { name: "pop", placed_at_s: 2.5 },
@@ -183,6 +184,364 @@ const STYLE_CARDS_CATALOG = [
     caption_preset: "minimal_clean",
     style_preset: "smoke2_style",
     tag: "minimal_clean · Crisp"
+  },
+  {
+    id: "archival_serif",
+    name: "Archival Serif",
+    kicker: "DOCUMENTARY",
+    headline: "ARCHIVE",
+    headlineColor: "#F5F0E6",
+    bgGradient: "linear-gradient(165deg, #292524 0%, #1C1917 60%, #090D16 100%)",
+    category: ["all", "polished"],
+    caption_preset: "serif_title",
+    style_preset: "smoke2_style",
+    tag: "serif_title · Title Card"
+  },
+  {
+    id: "tpl_saas_dark_premium",
+    name: "SaaS Dark Premium",
+    kicker: "MOTION EXPLAINER",
+    headline: "DARK",
+    headlineColor: "#60A5FA",
+    bgGradient: "linear-gradient(165deg, #0B1020 0%, #000000 60%, #090D16 100%)",
+    category: ["all", "templates", "bold"],
+    caption_preset: "minimal_clean",
+    style_preset: "neon_aura_style",
+    tag: "Template · minimal_clean",
+    template_id: "saas_dark_premium",
+    template_title_text: "Your product name + one-line claim",
+    sfx_defaults: [
+      { name: "swish", placed_at_s: 1.0 },
+      { name: "swish", placed_at_s: 5.0 },
+      { name: "swish", placed_at_s: 9.0 }
+    ],
+    storyboard_hook: [
+      {
+        id: "b0",
+        title: "hook",
+        text: "Brand mark + swoosh in the first 3 seconds, then logo, product UI, eclipse logo.",
+        start: 0.0,
+        end: 3.0,
+        visual: "full_frame",
+        graphic: "Title card",
+        sfx: "swish"
+      }
+    ]
+  },
+  {
+    id: "tpl_saas_clean_flat",
+    name: "SaaS Clean Flat",
+    kicker: "MOTION EXPLAINER",
+    headline: "CLEAN",
+    headlineColor: "#2F5BFF",
+    bgGradient: "linear-gradient(165deg, #F5F6F8 0%, #E8EDFF 55%, #C7D2FE 100%)",
+    category: ["all", "templates", "minimal"],
+    caption_preset: "minimal_clean",
+    style_preset: "clean_tech_style",
+    tag: "Template · minimal_clean",
+    template_id: "saas_clean_flat",
+    template_title_text: "Your brand name (end card)",
+    sfx_defaults: [
+      { name: "pop", placed_at_s: 1.0 },
+      { name: "pop", placed_at_s: 2.5 },
+      { name: "pop", placed_at_s: 4.0 },
+      { name: "ding", placed_at_s: 8.0 }
+    ],
+    storyboard_hook: [
+      {
+        id: "b0",
+        title: "hook",
+        text: "Problem list in the first 3 seconds, then the automatic turn, then a Coming soon brand card.",
+        start: 0.0,
+        end: 3.0,
+        visual: "full_frame",
+        graphic: "Title card",
+        sfx: "pop"
+      }
+    ]
+  },
+  {
+    id: "tpl_talking_head_pro",
+    name: "Talking Head Pro",
+    kicker: "BOLD CAPTIONS",
+    headline: "PROOF",
+    headlineColor: "#22C55E",
+    bgGradient: "linear-gradient(165deg, #14532D 0%, #111111 60%, #090D16 100%)",
+    category: ["all", "templates", "bold"],
+    caption_preset: "condensed",
+    style_preset: "creator_motion_graphics_style",
+    tag: "Template · condensed",
+    template_id: "talking_head_pro",
+    template_title_text: "Your big claim (first 3 seconds)",
+    sfx_defaults: [
+      { name: "pop", placed_at_s: 1.0 },
+      { name: "snap", placed_at_s: 2.5 },
+      { name: "pop", placed_at_s: 4.0 },
+      { name: "whoosh", placed_at_s: 5.5 }
+    ],
+    storyboard_hook: [
+      {
+        id: "b0",
+        title: "hook",
+        text: "One big claim in the first 3 seconds (title card + face, no clutter), then proof, steps, CTA.",
+        start: 0.0,
+        end: 3.0,
+        visual: "full_frame",
+        graphic: "Title card",
+        sfx: "pop"
+      }
+    ]
+  },
+  {
+    id: "tpl_trust_talking_head",
+    name: "Trust Talking Head",
+    kicker: "SLOW SINGLE TAKE",
+    headline: "TRUST",
+    headlineColor: "#1F2937",
+    bgGradient: "linear-gradient(165deg, #F8F5F0 0%, #E8E0D4 55%, #D6CDBF 100%)",
+    category: ["all", "templates", "polished"],
+    caption_preset: "minimal_clean",
+    style_preset: "warm_canvas_style",
+    tag: "Template · minimal_clean",
+    template_id: "trust_talking_head",
+    template_title_text: "Your value statement",
+    sfx_defaults: [],
+    storyboard_hook: [
+      {
+        id: "b0",
+        title: "hook",
+        text: "Open on the value statement, then values, credentials, services, character argument, soft invitation. No cuts.",
+        start: 0.0,
+        end: 3.0,
+        visual: "full_frame",
+        graphic: "Title card",
+        sfx: ""
+      }
+    ]
+  },
+  {
+    id: "tpl_split_screen_breakdown",
+    name: "Split-Screen Breakdown",
+    kicker: "BEFORE / AFTER",
+    headline: "VS",
+    headlineColor: "#FACC15",
+    bgGradient: "linear-gradient(165deg, #0A0A0A 0%, #262626 55%, #090D16 100%)",
+    category: ["all", "templates", "bold"],
+    caption_preset: "condensed",
+    style_preset: "creator_motion_graphics_style",
+    tag: "Template · condensed",
+    template_id: "split_screen_breakdown",
+    template_title_text: "Your contrast claim",
+    sfx_defaults: [
+      { name: "pop", placed_at_s: 1.0 },
+      { name: "click", placed_at_s: 2.0 },
+      { name: "pop", placed_at_s: 3.5 },
+      { name: "click", placed_at_s: 5.0 }
+    ],
+    storyboard_hook: [
+      {
+        id: "b0",
+        title: "hook",
+        text: "Contrast claim in the first 3 seconds, then proof by comparison, then verdict.",
+        start: 0.0,
+        end: 3.0,
+        visual: "split_50_50_stack",
+        graphic: "Title card",
+        sfx: "pop"
+      }
+    ]
+  },
+  {
+    id: "tpl_screen_record_tutorial",
+    name: "Screen-Record Tutorial",
+    kicker: "CRAFT TIP",
+    headline: "TIMELINE",
+    headlineColor: "#4F9CF0",
+    bgGradient: "linear-gradient(165deg, #14141F 0%, #26263A 60%, #090D16 100%)",
+    category: ["all", "templates", "minimal"],
+    caption_preset: "minimal_clean",
+    style_preset: "software_walkthrough_style",
+    tag: "Template · minimal_clean",
+    template_id: "screen_record_tutorial",
+    template_title_text: "Your tutorial question",
+    sfx_defaults: [
+      { name: "click", placed_at_s: 1.0 },
+      { name: "click", placed_at_s: 2.5 },
+      { name: "click", placed_at_s: 4.0 },
+      { name: "riser", placed_at_s: 6.0 },
+      { name: "whoosh", placed_at_s: 7.0 }
+    ],
+    storyboard_hook: [
+      {
+        id: "b0",
+        title: "hook",
+        text: "The question is the hook, then steps, then payoff.",
+        start: 0.0,
+        end: 3.0,
+        visual: "full_frame",
+        graphic: "Title card",
+        sfx: "click"
+      }
+    ]
+  },
+  {
+    id: "tpl_archival_documentary",
+    name: "Archival Documentary",
+    kicker: "CINEMATIC ESSAY",
+    headline: "HISTORY",
+    headlineColor: "#F5F0E6",
+    bgGradient: "linear-gradient(165deg, #57534E 0%, #292524 60%, #090D16 100%)",
+    category: ["all", "templates", "polished"],
+    caption_preset: "serif_title",
+    style_preset: "smoke2_style",
+    tag: "Template · serif_title",
+    template_id: "archival_documentary",
+    template_title_text: "YOUR TITLE IN SERIF CAPS",
+    sfx_defaults: [
+      { name: "swish", placed_at_s: 1.0 },
+      { name: "swish", placed_at_s: 7.0 },
+      { name: "swish", placed_at_s: 13.0 }
+    ],
+    storyboard_hook: [
+      {
+        id: "b0",
+        title: "hook",
+        text: "Huge image + serif title card in the first 3 seconds, then fact, implication, punchline.",
+        start: 0.0,
+        end: 3.0,
+        visual: "full_frame",
+        graphic: "Title card",
+        sfx: "swish"
+      }
+    ]
+  },
+  {
+    id: "tpl_portfolio_showreel",
+    name: "Portfolio Showreel",
+    kicker: "KINETIC TYPE",
+    headline: "PORTFOLIO",
+    headlineColor: "#A3E635",
+    bgGradient: "linear-gradient(165deg, #1A2E05 0%, #0A0A0A 60%, #090D16 100%)",
+    category: ["all", "templates", "bold"],
+    caption_preset: "condensed",
+    style_preset: "creator_motion_graphics_style",
+    tag: "Template · condensed",
+    template_id: "portfolio_showreel",
+    template_title_text: "PORTFOLIO",
+    sfx_defaults: [
+      { name: "thump", placed_at_s: 1.0 },
+      { name: "whoosh", placed_at_s: 2.0 },
+      { name: "thump", placed_at_s: 5.0 },
+      { name: "whoosh", placed_at_s: 8.0 }
+    ],
+    storyboard_hook: [
+      {
+        id: "b0",
+        title: "hook",
+        text: "Giant kinetic-type title in the first 3 seconds, then the work grid proves range.",
+        start: 0.0,
+        end: 3.0,
+        visual: "vertical_stack_grid",
+        graphic: "Title card",
+        sfx: "thump"
+      }
+    ]
+  },
+  {
+    id: "tpl_ai_showcase_desk",
+    name: "AI Showcase Desk",
+    kicker: "DESK REVEAL",
+    headline: "REVEAL",
+    headlineColor: "#FF8A3D",
+    bgGradient: "linear-gradient(165deg, #1F2937 0%, #0F1115 60%, #090D16 100%)",
+    category: ["all", "templates", "polished"],
+    caption_preset: "condensed",
+    style_preset: "neon_aura_style",
+    tag: "Template · condensed",
+    template_id: "ai_showcase_desk",
+    template_title_text: "Your AI demo claim",
+    sfx_defaults: [
+      { name: "swish", placed_at_s: 1.0 },
+      { name: "swish", placed_at_s: 6.0 },
+      { name: "swish", placed_at_s: 11.0 }
+    ],
+    storyboard_hook: [
+      {
+        id: "b0",
+        title: "hook",
+        text: "Desk + bold claim title in the first 3 seconds, then proof-by-demo on the monitor, then end screen.",
+        start: 0.0,
+        end: 3.0,
+        visual: "full_frame",
+        graphic: "Title card",
+        sfx: "swish"
+      }
+    ]
+  },
+  {
+    id: "tpl_local_language_demo",
+    name: "Local-Language Demo",
+    kicker: "ROMAN URDU · HINGLISH",
+    headline: "REVIEW",
+    headlineColor: "#FACC15",
+    bgGradient: "linear-gradient(165deg, #1E3A8A 0%, #111827 60%, #090D16 100%)",
+    category: ["all", "templates", "new"],
+    caption_preset: "pill_highlight",
+    style_preset: "vox_explainer_style",
+    tag: "Template · pill_highlight",
+    template_id: "local_language_demo",
+    template_title_text: "Your product verdict line",
+    sfx_defaults: [
+      { name: "pop", placed_at_s: 1.0 },
+      { name: "pop", placed_at_s: 2.5 },
+      { name: "pop", placed_at_s: 4.0 },
+      { name: "snap", placed_at_s: 5.5 }
+    ],
+    storyboard_hook: [
+      {
+        id: "b0",
+        title: "hook",
+        text: "Product on face or a fear hook in the first 3 seconds, then demo/proof, then verdict/CTA.",
+        start: 0.0,
+        end: 3.0,
+        visual: "full_frame",
+        graphic: "Title card",
+        sfx: "pop"
+      }
+    ]
+  },
+  {
+    id: "tpl_gaming_montage",
+    name: "Gaming Montage",
+    kicker: "PUBG MOBILE TDM",
+    headline: "KILLS",
+    headlineColor: "#EF4444",
+    bgGradient: "linear-gradient(165deg, #450A0A 0%, #14181F 60%, #090D16 100%)",
+    category: ["all", "templates", "bold"],
+    caption_preset: "minimal_clean",
+    style_preset: "neon_aura_style",
+    tag: "Template · minimal_clean",
+    template_id: "gaming_montage",
+    template_title_text: "Your player tag",
+    sfx_defaults: [
+      { name: "thump", placed_at_s: 1.0 },
+      { name: "thump", placed_at_s: 3.0 },
+      { name: "thump", placed_at_s: 5.0 },
+      { name: "riser", placed_at_s: 6.5 },
+      { name: "whoosh", placed_at_s: 7.5 }
+    ],
+    storyboard_hook: [
+      {
+        id: "b0",
+        title: "hook",
+        text: "Immediate action, no intro card: open on the first kill with HUD visible. Streak badges are the proof beats.",
+        start: 0.0,
+        end: 3.0,
+        visual: "full_frame_centre_crop",
+        graphic: "Title card",
+        sfx: "thump"
+      }
+    ]
   }
 ];
 
@@ -296,6 +655,24 @@ function applyStyleCardSelection(card, openNleImmediately = false) {
   state.selected_style_card = card.id;
   state.caption_preset = card.caption_preset;
   state.style_preset = card.style_preset || "smoke2_style";
+  state.template_id = card.template_id || null;
+
+  // Template cards fill the job with their bundle: SFX defaults, storyboard
+  // hook block and title text. Plain style cards leave those untouched.
+  if (card.template_id) {
+    if (Array.isArray(card.sfx_defaults)) {
+      state.sfx = JSON.parse(JSON.stringify(card.sfx_defaults));
+    }
+    if (Array.isArray(card.storyboard_hook)) {
+      state.storyboard = {
+        title: card.name,
+        blocks: JSON.parse(JSON.stringify(card.storyboard_hook))
+      };
+    }
+    if (card.template_title_text) {
+      state.title_text = card.template_title_text;
+    }
+  }
 
   document.querySelectorAll(".cap-chip").forEach((c) => {
     c.classList.toggle("active", c.getAttribute("data-preset") === state.caption_preset);
@@ -569,7 +946,8 @@ async function triggerRenderJob() {
       title_text: state.title_text,
       style_preset: state.style_preset,
       sfx: state.sfx,
-      storyboard: state.storyboard
+      storyboard: state.storyboard,
+      template_id: state.template_id
     });
     const res = await fetch(`${API_BASE}/api/render`, {
       method: "POST",

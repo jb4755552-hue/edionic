@@ -42,6 +42,7 @@ from storyboard import (
     generate_storyboard_html_preview,
     roundtrip_storyboard_edits_to_edl,
 )
+from templates import apply_template_to_job, list_templates
 from contact_sheet_qa import run_contact_sheet_qa
 from openfilm import (
     apply_overrides_and_locks,
@@ -213,6 +214,10 @@ class EdionicRequestHandler(SimpleHTTPRequestHandler):
 
         if path == "/api/styles":
             self._send_json(200, {"styles": list_style_library()})
+            return
+
+        if path == "/api/templates":
+            self._send_json(200, {"templates": list_templates()})
             return
 
         if path.startswith("/styles/"):
@@ -460,6 +465,13 @@ class EdionicRequestHandler(SimpleHTTPRequestHandler):
 
         if path in ("/api/render", "/api/render/job"):
             raw_job = payload.get("edl") or payload
+            template_id = payload.get("template_id") or raw_job.get("template_id")
+            if template_id:
+                try:
+                    raw_job = apply_template_to_job(template_id, raw_job)
+                except ValueError as exc:
+                    self._send_json(400, {"error": str(exc)})
+                    return
             edl = roundtrip_timeline_to_edl(raw_job, existing_edl=load_edl())
             target_res = payload.get("resolution") or raw_job.get("resolution") or "1080x1920"
             edl["resolution"] = target_res

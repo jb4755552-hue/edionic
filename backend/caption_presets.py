@@ -1,6 +1,6 @@
 """
-Edionic Caption / Text Preset Library — caption_presets.py (Section 5.3 — All 11 Presets)
-Implements all 11 verified presets on 1080x1920 vertical canvas with >= 54 px glyph height:
+Edionic Caption / Text Preset Library — caption_presets.py (Section 5.3 — All 12 Presets)
+Implements all 12 verified presets on 1080x1920 vertical canvas with >= 54 px glyph height:
 1. glow (default)
 2. gradient_steps (steps colors word-by-word; honest limit: ASS has no true smooth gradient)
 3. extrude_3d (heavy 3D block shadow + outline)
@@ -12,10 +12,12 @@ Implements all 11 verified presets on 1080x1920 vertical canvas with >= 54 px gl
 9. podcast_two_tier (clean top context line + oversized bottom active word tier)
 10. minimal_clean (crisp thin-outline modern lower-third with accent highlight)
 11. light_sweep_title (title card: glowing serif title with a translucent highlight bar sweeping across it — rendered as a title clip)
+12. serif_title (title card: white serif caps title + smaller serif body line beneath, centred — archival/documentary)
 """
 
 from typing import List, Dict, Any
 
+# NOTE: constant name kept for compatibility; the list now holds 12 presets.
 ALL_11_PRESETS = [
     "glow",
     "gradient_steps",
@@ -28,6 +30,7 @@ ALL_11_PRESETS = [
     "podcast_two_tier",
     "minimal_clean",
     "light_sweep_title",
+    "serif_title",
 ]
 
 PRESET_CATALOG_INFO: Dict[str, Dict[str, Any]] = {
@@ -99,6 +102,12 @@ PRESET_CATALOG_INFO: Dict[str, Dict[str, Any]] = {
         "label": "Light Sweep Title",
         "type": "title_clip",
         "description": "Title card: glowing serif title with a translucent highlight bar sweeping across it (rendered as a title clip)."
+    },
+    "serif_title": {
+        "name": "serif_title",
+        "label": "Serif Title",
+        "type": "ass_word_highlight",
+        "description": "Title card: large white serif caps word + smaller serif phrase line beneath, centred (archival/documentary)."
     }
 }
 
@@ -135,7 +144,7 @@ def generate_ass_captions(
     play_res_y: int = 1920,
 ) -> Dict[str, Any]:
     """
-    Generate a 1080x1920 ASS file for any of the 11 verified presets.
+    Generate a 1080x1920 ASS file for any of the verified presets.
     Every preset produces a distinct style and renders >= 54 px glyph height on 1080x1920 frames.
     """
     if preset not in ALL_11_PRESETS:
@@ -160,6 +169,7 @@ Style: PodcastTier,Arial,78,&H00B8C8D8,&H00FFFFFF,&H0010141C,&H80000000,-1,0,0,0
 Style: MinimalClean,Arial,86,&H00FAFAFA,&H00FF633B,&H00181C24,&H40000000,-1,0,0,0,100,100,3,0,1,3,1,2,70,70,340,1
 Style: LightSweepBar,Arial,96,&H90FFFFFF,&H90FFFFFF,&H90FFFFFF,&H90FFFFFF,-1,0,0,0,60,180,0,0,3,18,0,5,0,0,0,1
 Style: LightSweepTitle,Georgia,86,&H00FFFFFF,&H0090E0FF,&H00FF633B,&H00000000,-1,0,0,0,100,100,3,0,1,5,2,2,70,70,360,1
+Style: SerifTitle,Georgia,88,&H00FFFFFF,&H00FFFFFF,&H00101010,&H80000000,-1,0,0,0,100,100,2,0,1,4,2,5,70,70,0,1
 """
 
     ass_header = f"""[Script Info]
@@ -339,6 +349,16 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                         else:
                             parts.append(f"{sep}{txt}")
                     events.append(f"Dialogue: 1,{s_clamped},{end_str},LightSweepTitle,,0,0,0,,{''.join(parts)}")
+
+            elif preset == "serif_title":
+                # Title card: large white serif caps active word + smaller serif phrase line beneath, centred
+                title_txt = str(active_w.get("word", "")).strip().upper()
+                body_txt = " ".join(str(w.get("word", "")).strip() for w in chunk)
+                serif_line = (
+                    f"{{\\fs92\\1c&HFFFFFF&\\b1}}{title_txt}\\N"
+                    f"{{\\fs56\\1c&HD8D2C4&}}{body_txt}"
+                )
+                events.append(f"Dialogue: 1,{start_str},{end_str},SerifTitle,,0,0,0,,{serif_line}")
 
     full_ass = ass_header + "\n".join(events) + "\n"
     with open(output_ass_path, "w", encoding="utf-8") as f:

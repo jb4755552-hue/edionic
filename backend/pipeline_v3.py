@@ -463,9 +463,13 @@ def render_edl_to_video(
         progress_cb(45, f"Step 3/5: Generating caption preset & face-anchored {target_w}x{target_h} crop...")
 
     framing = compute_face_anchored_crop(source_video, target_w=target_w, target_h=target_h)
-    preset_name = edl_data.get("caption_preset", "glow") or "glow"
-    if preset_name not in ALL_11_PRESETS:
-        preset_name = "glow"
+    raw_preset = edl_data.get("caption_preset")
+    preset_name = raw_preset or "glow"
+    if raw_preset and preset_name not in ALL_11_PRESETS:
+        raise ValueError(
+            f"Unknown caption preset: {raw_preset!r}. "
+            f"Valid presets: {', '.join(ALL_11_PRESETS)}"
+        )
     title_text = edl_data.get("title_text") or "EDIONIC 9:16 HOOK TITLE"
     style_preset_id = edl_data.get("style_preset") or "smoke2_style"
 
@@ -475,10 +479,12 @@ def render_edl_to_video(
         if trk.get("locked"):
             locked_tracks.add(trk.get("id"))
 
-    # Determine SFX placements (filter to fit within edited_dur or use default cut placements)
+    # Determine SFX placements: keep the user's valid placements. Only fall back to
+    # default cut placements when the user gave zero valid placements — never
+    # silently discard user SFX choices.
     raw_sfx = edl_data.get("sfx") or []
     valid_raw_sfx = [s for s in raw_sfx if float(s.get("placed_at_s", 0.0)) <= edited_dur - 0.15]
-    sfx_placements = valid_raw_sfx if len(valid_raw_sfx) >= 3 else build_default_cut_sfx_placements(cut_plan, edited_dur)
+    sfx_placements = valid_raw_sfx if valid_raw_sfx else build_default_cut_sfx_placements(cut_plan, edited_dur)
     edl_data["sfx"] = sfx_placements
     edl_data["caption_preset"] = preset_name
     edl_data["title_text"] = title_text

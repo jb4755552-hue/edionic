@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Edionic Live Style Preview — software_walkthrough_style</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 24px;
+      background: #0F1420;
+      color: #F4F5F7;
+      font-family: 'Inter Tight', system-ui, sans-serif;
+      display: flex;
+      gap: 28px;
+      align-items: flex-start;
+      justify-content: center;
+    }
+    .phone-preview {
+      width: 315px;
+      height: 560px;
+      border-radius: 24px;
+      border: 3px solid #3B63FF;
+      background: linear-gradient(170deg, #5B5BF6 0%, #14161C 48%, #11141C 100%);
+      position: relative;
+      overflow: hidden;
+      box-shadow: 0 20px 50px rgba(0,0,0,0.55);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 22px;
+      box-sizing: border-box;
+    }
+    .safe-guide {
+      border: 1px dashed rgba(255,255,255,0.28);
+      border-radius: 10px;
+      padding: 8px 12px;
+      font-size: 11px;
+      background: rgba(0,0,0,0.35);
+    }
+    .speaker-silhouette {
+      width: 140px;
+      height: 190px;
+      margin: 20px auto;
+      border-radius: 70px 70px 24px 24px;
+      background: rgba(255,255,255,0.14);
+      border: 2px solid rgba(255,255,255,0.35);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      text-align: center;
+    }
+    .caption-demo {
+      text-align: center;
+      font-weight: 900;
+      font-size: 24px;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      color: #FFFFFF;
+      text-shadow: 0 0 14px #3B63FF, 0 3px 0 #000;
+      padding: 12px;
+      background: rgba(17,20,28,0.68);
+      border-radius: 12px;
+    }
+    .caption-demo .active-word {
+      color: #00EAFF;
+    }
+    .meta-card {
+      max-width: 420px;
+      background: #171D2E;
+      border: 1px solid #2A334D;
+      border-radius: 16px;
+      padding: 20px;
+    }
+    .swatches {
+      display: flex;
+      gap: 8px;
+      margin: 14px 0;
+    }
+    .swatch {
+      flex: 1;
+      height: 54px;
+      border-radius: 8px;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      padding-bottom: 4px;
+      font-size: 10px;
+      font-family: monospace;
+      color: #fff;
+      text-shadow: 0 1px 2px #000;
+      border: 1px solid rgba(255,255,255,0.2);
+    }
+    .badge {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 6px;
+      font-size: 11px;
+      margin-right: 6px;
+      margin-top: 6px;
+      background: #232B42;
+      color: #FACC15;
+    }
+  </style>
+</head>
+<body>
+  <div class="phone-preview">
+    <div class="safe-guide">9:16 Headroom 8.0% · Eyes @ 32.5% · 1080x1920</div>
+    <div class="speaker-silhouette">Face-Anchored<br/>Speaker Zone</div>
+    <div class="caption-demo">
+      WELCOME TO <span class="active-word">EDIONIC</span> 9:16
+      <div style="font-size:11px;font-weight:500;margin-top:4px;opacity:0.8;">Preset: minimal_clean (≥ 54 px)</div>
+    </div>
+  </div>
+  <div class="meta-card">
+    <h2 style="margin-top:0;">Live Style Preview: <code>software_walkthrough_style</code></h2>
+    <p>Resolution: <strong>1080x1920</strong> · FPS: <strong>30.0</strong> · Avg Shot: <strong>19.5s</strong> (1 scenes / 19.5s)</p>
+    <h4>Top 5 Measured Hex Palette</h4>
+    <div class="swatches"><div class="swatch" style="background:#5B5BF6;"><span>#5B5BF6</span></div><div class="swatch" style="background:#14161C;"><span>#14161C</span></div><div class="swatch" style="background:#1FB46E;"><span>#1FB46E</span></div><div class="swatch" style="background:#FFD60A;"><span>#FFD60A</span></div><div class="swatch" style="background:#F8F9FB;"><span>#F8F9FB</span></div></div>
+    <div>
+      <span class="badge">caption_style: DM Sans UI text; DM Mono caps for tiny labels</span>
+      <span class="badge">hook_style: Title card first: mono tag, big two-line title, step-count pill</span>
+      <span class="badge">pacing: 3-5 seconds per step, never more than one new action at a time</span>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,62 @@
+/**
+ * Edionic Style Library Module — styles/clean_tech_style/base.js
+ * Pure deterministic style configuration & frame(t) overlay descriptor.
+ */
+
+export const STYLE_CONFIG = {
+  "style_id": "clean_tech_style",
+  "name": "Clean Tech (Nafay 3D, adapted)",
+  "reference_video_count": 0,
+  "reference_videos": [],
+  "resolution": "1080x1920",
+  "fps": 30.0,
+  "duration": 20.0,
+  "scene_count": 1,
+  "avg_shot_length": 20.0,
+  "palette": [
+    "#F5F6F8",
+    "#0D0F14",
+    "#2F5BFF",
+    "#18B46B",
+    "#9AA1AD"
+  ],
+  "caption_style": "Inter Tight 800 statements, key word in a blue pill turning white",
+  "hook_style": "Hook lands in under 2 seconds: short statement rising word by word",
+  "pacing": "Calm and crisp: one new element every 0.3-1s; takeaway holds ~1.5s",
+  "recommended_caption_preset": "minimal_clean",
+  "ffmpeg_grade_filter": "eq=contrast=1.03:saturation=1.02:brightness=0.02",
+  "family": "Kinetic Type",
+  "fonts": [
+    "Inter Tight 500-800",
+    "JetBrains Mono 700"
+  ],
+  "motion_language": "Cool off-white with a drifting dot grid. Words rise from behind a mask with expo ease; a blue pill grows behind the one key word; cards slide up and fade in; nodes pop with a small overshoot; typed text with a blinking caret. Clean horizontal pushes and zoom-through cuts. No glitches or flashes.",
+  "sound_map": {
+    "rising_words": "click",
+    "blue_pill": "swish",
+    "cards_nodes": "pop",
+    "typing": "click",
+    "scene_push": "whoosh",
+    "finished_check": "ding",
+    "counter_ticks": "click"
+  },
+  "adapted_from": "Nafay 3D ai-video-editor skill style: clean-tech",
+  "adaptation_note": "Adapted from the Nafay 3D ai-video-editor skill style definition (colors, typography, motion language). Metrics are the skill's demo values, not measured from a reference video. The skill's 16:9-only limit does not apply: this bundle is Edionic-native 9:16."
+};
+
+export function computeStyleLookAtTime(t, state = {}) {
+  const normT = Math.max(0, Number(t) || 0);
+  const pulse = 0.5 + 0.5 * Math.sin(normT * 2.0 * Math.PI * 0.5);
+  return {
+    style_id: "clean_tech_style",
+    timestamp_s: Number(normT.toFixed(3)),
+    primary_color: "#F5F6F8",
+    secondary_color: "#0D0F14",
+    palette: ["#F5F6F8", "#0D0F14", "#2F5BFF", "#18B46B", "#9AA1AD"],
+    recommended_caption_preset: "minimal_clean",
+    vignette_opacity: Number((0.18 + 0.04 * pulse).toFixed(3)),
+    safe_zone_9_16: { top_pct: 8.0, eyes_pct: 32.5, caption_y_range: [1280, 1650] }
+  };
+}
+
+export default STYLE_CONFIG;
